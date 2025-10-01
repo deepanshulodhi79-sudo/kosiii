@@ -20,7 +20,9 @@ app.use(session({
 
 // Auth middleware
 function requireAuth(req, res, next) {
-  if (req.session && req.session.user) return next();
+  if (req.session && req.session.user) {
+    return next();
+  }
   return res.redirect('/');
 }
 
@@ -46,6 +48,7 @@ app.post('/login', (req, res) => {
 app.post('/logout', (req, res) => {
   req.session.destroy(err => {
     res.clearCookie('connect.sid');
+    // ignore err, just respond
     return res.json({ success: true });
   });
 });
@@ -68,7 +71,7 @@ app.post('/send', requireAuth, async (req, res) => {
       return res.json({ success: false, message: "No valid recipients" });
     }
 
-    // Create transporter fresh
+    // Create transporter
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
       port: 465,
@@ -79,6 +82,7 @@ app.post('/send', requireAuth, async (req, res) => {
       }
     });
 
+    // Prepare mail options
     const mailOptions = {
       from: `"${senderName || 'Anonymous'}" <${email}>`,
       to: recipientList[0],
@@ -97,6 +101,7 @@ app.post('/send', requireAuth, async (req, res) => {
       success: true,
       message: `Mail sent to ${recipientList.length} recipients`
     });
+
   } catch (err) {
     console.error("Send error:", err);
     return res.json({ success: false, message: err.message });
