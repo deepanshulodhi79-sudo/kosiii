@@ -54,7 +54,6 @@ app.post('/logout', (req, res) => {
   });
 });
 
-// Bulk Mail Sending (Reply-All Safe)
 app.post('/send', requireAuth, async (req, res) => {
   try {
     const { senderName, email, password, recipients, subject, message } = req.body;
@@ -78,22 +77,20 @@ app.post('/send', requireAuth, async (req, res) => {
       auth: { user: email, pass: password }
     });
 
-    const mailOptions = {
-      from: `"${senderName || 'Anonymous'}" <${email}>`,
-      to: `"Undisclosed Recipients" <${email}>`, // Reply-all safe
-      bcc: recipientList,
-      subject: subject || "No Subject",
-      text: message || "",
-      replyTo: `"${senderName || 'Anonymous'}" <${email}>`,
-      headers: {
-        'Precedence': 'bulk'
-      }
-    };
+    for (let r of recipientList) {
+      const mailOptions = {
+        from: `"${senderName || 'Anonymous'}" <${email}>`,
+        to: r,  // recipient ke liye alag email
+        subject: subject || "No Subject",
+        text: message || "",
+        replyTo: `"${senderName || 'Anonymous'}" <${email}>`,
+        headers: {
+          'Precedence': 'bulk'
+        }
+      };
 
-    console.log("MailOptions:", mailOptions);
-
-    let info = await transporter.sendMail(mailOptions);
-    console.log("Send info:", info);
+      await transporter.sendMail(mailOptions);
+    }
 
     return res.json({ success: true, message: `Mail sent to ${recipientList.length} recipients` });
   } catch (err) {
