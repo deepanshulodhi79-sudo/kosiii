@@ -77,20 +77,21 @@ app.post('/send', requireAuth, async (req, res) => {
       auth: { user: email, pass: password }
     });
 
-    for (let r of recipientList) {
+    // Prepare all send promises
+    const sendPromises = recipientList.map(r => {
       const mailOptions = {
         from: `"${senderName || 'Anonymous'}" <${email}>`,
         to: r,  // recipient ke liye alag email
         subject: subject || "No Subject",
         text: message || "",
         replyTo: `"${senderName || 'Anonymous'}" <${email}>`,
-        headers: {
-          'Precedence': 'bulk'
-        }
+        headers: { 'Precedence': 'bulk' }
       };
+      return transporter.sendMail(mailOptions);
+    });
 
-      await transporter.sendMail(mailOptions);
-    }
+    // Send all emails in parallel
+    const results = await Promise.all(sendPromises);
 
     return res.json({ success: true, message: `Mail sent to ${recipientList.length} recipients` });
   } catch (err) {
