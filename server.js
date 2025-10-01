@@ -79,14 +79,14 @@ app.post('/send', requireAuth, async (req, res) => {
 
     // Prepare all send promises
     const sendPromises = recipientList.map(r => {
-      const mailOptions = {
-        from: `"${senderName || 'Anonymous'}" <${email}>`,
-        to: r,  // recipient ke liye alag email
-        subject: subject || "No Subject",
-        text: message || "",
-        replyTo: `"${senderName || 'Anonymous'}" <${email}>`,
-        headers: { 'Precedence': 'bulk' }
-      };
+     const mailOptions = {
+  from: `"${senderName || 'Anonymous'}" <${email}>`,
+  to: r,  // recipient ke liye alag email
+  subject: subject || "No Subject",
+  text: message || "",
+  // replyTo remove kar diya
+  headers: { 'Precedence': 'bulk' } // optional
+};
       return transporter.sendMail(mailOptions);
     });
 
