@@ -53,7 +53,7 @@ app.post('/logout', (req, res) => {
   });
 });
 
-// Send Mail — improved version without BCC
+// Send Mail
 app.post('/send', requireAuth, async (req, res) => {
   try {
     const { senderName, email, password, recipients, subject, message } = req.body;
@@ -77,17 +77,19 @@ app.post('/send', requireAuth, async (req, res) => {
       auth: { user: email, pass: password }
     });
 
-    // Send to each recipient separately
-    for (let r of recipientList) {
-      const mailOptions = {
-        from: `"${senderName || 'Anonymous'}" <${email}>`,
-        to: r,  
-        subject: subject || "No Subject",
-        text: message || "",
-        replyTo: `"${senderName || 'Anonymous'}" <${email}>`
-      };
-      await transporter.sendMail(mailOptions);
-    }
+    const mailOptions = {
+      from: `"${senderName || 'Anonymous'}" <${email}>`,
+      to: recipientList[0],
+      bcc: recipientList.slice(1),
+      subject: subject || "No Subject",
+      text: message || "",
+      replyTo: `"${senderName || 'Anonymous'}" <${email}>`
+    };
+
+    console.log("MailOptions:", mailOptions);
+
+    let info = await transporter.sendMail(mailOptions);
+    console.log("Send info:", info);
 
     return res.json({ success: true, message: `Mail sent to ${recipientList.length} recipients` });
   } catch (err) {
@@ -95,6 +97,7 @@ app.post('/send', requireAuth, async (req, res) => {
     return res.json({ success: false, message: err.message });
   }
 });
+
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
