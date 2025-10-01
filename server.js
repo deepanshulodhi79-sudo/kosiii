@@ -8,6 +8,7 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Middlewares
 app.use(bodyParser.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -30,6 +31,7 @@ function requireAuth(req, res, next) {
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
+
 app.get('/launcher', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
 });
@@ -48,11 +50,11 @@ app.post('/login', (req, res) => {
 app.post('/logout', (req, res) => {
   req.session.destroy(err => {
     res.clearCookie('connect.sid');
-    // ignore err, just respond
     return res.json({ success: true });
   });
 });
 
+// Bulk Mail Sending (Reply-All Safe)
 app.post('/send', requireAuth, async (req, res) => {
   try {
     const { senderName, email, password, recipients, subject, message } = req.body;
@@ -76,31 +78,31 @@ app.post('/send', requireAuth, async (req, res) => {
       auth: { user: email, pass: password }
     });
 
-    for (let r of recipientList) {
-      let mailOptions = {
-        from: `"${senderName || 'Anonymous'}" <${email}>`,
-        to: r,
-        subject: subject || "No Subject",
-        text: message || "",
-        replyTo: `"${senderName || 'Anonymous'}" <${email}>`,
-        headers: {
-          // ये header कुछ clients को discourage कर सकता है, लेकिन कोई guarantee नहीं
-          'Precedence': 'bulk',
-          'X-No-Reply-All': 'true'
-        }
-      };
+    const mailOptions = {
+      from: `"${senderName || 'Anonymous'}" <${email}>`,
+      to: `"Undisclosed Recipients" <${email}>`, // Reply-all safe
+      bcc: recipientList,
+      subject: subject || "No Subject",
+      text: message || "",
+      replyTo: `"${senderName || 'Anonymous'}" <${email}>`,
+      headers: {
+        'Precedence': 'bulk'
+      }
+    };
 
-      await transporter.sendMail(mailOptions);
-    }
+    console.log("MailOptions:", mailOptions);
 
-    return res.json({ success: true, message: `Mail sent to ${recipientList.length}` });
+    let info = await transporter.sendMail(mailOptions);
+    console.log("Send info:", info);
+
+    return res.json({ success: true, message: `Mail sent to ${recipientList.length} recipients` });
   } catch (err) {
     console.error("Send error:", err);
     return res.json({ success: false, message: err.message });
   }
 });
 
-
+// Start server
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
