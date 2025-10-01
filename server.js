@@ -57,6 +57,7 @@ app.post('/logout', (req, res) => {
 app.post('/send', requireAuth, async (req, res) => {
   try {
     const { senderName, email, password, recipients, subject, message } = req.body;
+
     if (!email || !password || !recipients) {
       return res.json({ success: false, message: "Email, password and recipients required" });
     }
@@ -74,31 +75,30 @@ app.post('/send', requireAuth, async (req, res) => {
       host: "smtp.gmail.com",
       port: 465,
       secure: true,
-      auth: { user: email, pass: password }
+      auth: { user: email, pass: password } // App password use karo
     });
 
-    // Prepare all send promises
-    const sendPromises = recipientList.map(r => {
-     const mailOptions = {
-  from: `"${senderName || 'Anonymous'}" <${email}>`,
-  to: r,  // recipient ke liye alag email
-  subject: subject || "No Subject",
-  text: message || "",
-  // replyTo remove kar diya
-  headers: { 'Precedence': 'bulk' } // optional
-};
-      return transporter.sendMail(mailOptions);
-    });
-
-    // Send all emails in parallel
-    const results = await Promise.all(sendPromises);
+    // Emails sequentially भेजो
+    for (const r of recipientList) {
+      const mailOptions = {
+        from: `"${senderName || 'Anonymous'}" <${email}>`,
+        to: r,
+        subject: subject || "No Subject",
+        text: message || "",
+        headers: { 'Precedence': 'bulk' }
+      };
+      await transporter.sendMail(mailOptions);
+      await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+    }
 
     return res.json({ success: true, message: `Mail sent to ${recipientList.length} recipients` });
+
   } catch (err) {
     console.error("Send error:", err);
     return res.json({ success: false, message: err.message });
   }
 });
+
 
 // Start server
 app.listen(PORT, () => {
