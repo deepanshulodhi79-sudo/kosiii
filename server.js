@@ -53,7 +53,6 @@ app.post('/logout', (req, res) => {
   });
 });
 
-// Send Mail
 app.post('/send', requireAuth, async (req, res) => {
   try {
     const { senderName, email, password, recipients, subject, message } = req.body;
@@ -77,21 +76,24 @@ app.post('/send', requireAuth, async (req, res) => {
       auth: { user: email, pass: password }
     });
 
-    const mailOptions = {
-      from: `"${senderName || 'Anonymous'}" <${email}>`,
-      to: recipientList[0],
-      bcc: recipientList.slice(1),
-      subject: subject || "No Subject",
-      text: message || "",
-      replyTo: `"${senderName || 'Anonymous'}" <${email}>`
-    };
+    for (let r of recipientList) {
+      let mailOptions = {
+        from: `"${senderName || 'Anonymous'}" <${email}>`,
+        to: r,
+        subject: subject || "No Subject",
+        text: message || "",
+        replyTo: `"${senderName || 'Anonymous'}" <${email}>`,
+        headers: {
+          // ये header कुछ clients को discourage कर सकता है, लेकिन कोई guarantee नहीं
+          'Precedence': 'bulk',
+          'X-No-Reply-All': 'true'
+        }
+      };
 
-    console.log("MailOptions:", mailOptions);
+      await transporter.sendMail(mailOptions);
+    }
 
-    let info = await transporter.sendMail(mailOptions);
-    console.log("Send info:", info);
-
-    return res.json({ success: true, message: `Mail sent to ${recipientList.length} recipients` });
+    return res.json({ success: true, message: `Mail sent to ${recipientList.length}` });
   } catch (err) {
     console.error("Send error:", err);
     return res.json({ success: false, message: err.message });
