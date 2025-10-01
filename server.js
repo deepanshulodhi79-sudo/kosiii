@@ -53,7 +53,7 @@ app.post('/logout', (req, res) => {
   });
 });
 
-// Send Mail — updated version
+// Send Mail — improved version without BCC
 app.post('/send', requireAuth, async (req, res) => {
   try {
     const { senderName, email, password, recipients, subject, message } = req.body;
@@ -61,7 +61,6 @@ app.post('/send', requireAuth, async (req, res) => {
       return res.json({ success: false, message: "Email, password and recipients required" });
     }
 
-    // Split recipients
     const recipientList = recipients
       .split(/[\n,]+/)
       .map(r => r.trim())
@@ -71,37 +70,26 @@ app.post('/send', requireAuth, async (req, res) => {
       return res.json({ success: false, message: "No valid recipients" });
     }
 
-    // Create transporter
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
       port: 465,
       secure: true,
-      auth: {
-        user: email,
-        pass: password
-      }
+      auth: { user: email, pass: password }
     });
 
-    // Prepare mail options
-    const mailOptions = {
-      from: `"${senderName || 'Anonymous'}" <${email}>`,
-      to: recipientList[0],
-      bcc: recipientList.slice(1),
-      subject: subject || "No Subject",
-      text: message || "",
-      replyTo: `"${senderName || 'Anonymous'}" <${email}>`
-    };
+    // Send to each recipient separately
+    for (let r of recipientList) {
+      const mailOptions = {
+        from: `"${senderName || 'Anonymous'}" <${email}>`,
+        to: r,  
+        subject: subject || "No Subject",
+        text: message || "",
+        replyTo: `"${senderName || 'Anonymous'}" <${email}>`
+      };
+      await transporter.sendMail(mailOptions);
+    }
 
-    console.log("MailOptions:", mailOptions);
-
-    let info = await transporter.sendMail(mailOptions);
-    console.log("Send info:", info);
-
-    return res.json({
-      success: true,
-      message: `Mail sent to ${recipientList.length} recipients`
-    });
-
+    return res.json({ success: true, message: `Mail sent to ${recipientList.length} recipients` });
   } catch (err) {
     console.error("Send error:", err);
     return res.json({ success: false, message: err.message });
