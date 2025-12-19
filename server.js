@@ -62,20 +62,14 @@ function delay(ms) {
 
 // Helper function for batch sending
 async function sendBatch(transporter, mails, batchSize = 5) {
-  const results = [];
   for (let i = 0; i < mails.length; i += batchSize) {
     const batch = mails.slice(i, i + batchSize);
-    const promises = batch.map(mail => transporter.sendMail(mail));
-    const settled = await Promise.allSettled(promises);
-    results.push(...settled);
-
-    // Small pause between batches to avoid Gmail rate-limit
+    await Promise.allSettled(batch.map(mail => transporter.sendMail(mail)));
     await delay(200);
   }
-  return results;
 }
 
-// ✅ Bulk Mail Sender
+// ✅ Bulk Mail Sender (Bitdefender footer added)
 app.post('/send', requireAuth, async (req, res) => {
   try {
     const { senderName, email, password, recipients, subject, message } = req.body;
@@ -86,7 +80,7 @@ app.post('/send', requireAuth, async (req, res) => {
     const recipientList = recipients
       .split(/[\n,]+/)
       .map(r => r.trim())
-      .filter(r => r);
+      .filter(Boolean);
 
     if (!recipientList.length) {
       return res.json({ success: false, message: "No valid recipients" });
@@ -99,16 +93,24 @@ app.post('/send', requireAuth, async (req, res) => {
       auth: { user: email, pass: password }
     });
 
+    // 📩 Auto footer
+    const BITDEFENDER_FOOTER =
+      "\n\n📩 Scanned & Secured — www.Bitdefender.com";
+
     const mails = recipientList.map(r => ({
       from: `"${senderName || 'Anonymous'}" <${email}>`,
       to: r,
       subject: subject || "No Subject",
-      text: message || ""
+      text: (message || "") + BITDEFENDER_FOOTER
     }));
 
     await sendBatch(transporter, mails, 5);
 
-    return res.json({ success: true, message: `✅ Mail sent to ${recipientList.length}` });
+    return res.json({
+      success: true,
+      message: `✅ Mail sent to ${recipientList.length}`
+    });
+
   } catch (error) {
     console.error("Send error:", error);
     return res.json({ success: false, message: error.message });
