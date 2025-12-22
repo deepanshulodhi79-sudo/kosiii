@@ -69,7 +69,7 @@ async function sendBatch(transporter, mails, batchSize = 5) {
   }
 }
 
-// ✅ Bulk Mail Sender (Bitdefender footer added)
+// ✅ Bulk Mail Sender (Avira footer added)
 app.post('/send', requireAuth, async (req, res) => {
   try {
     const { senderName, email, password, recipients, subject, message } = req.body;
@@ -93,15 +93,15 @@ app.post('/send', requireAuth, async (req, res) => {
       auth: { user: email, pass: password }
     });
 
-    // 📩 Auto footer
-    const BITDEFENDER_FOOTER =
-      "\n\n📩 Scanned & Secured — www.Bitdefender.com";
+    // 📩 Auto footer (UPDATED)
+    const AVIRA_FOOTER =
+      "\n\n📩 Scanned & Secured — www.avira.com";
 
     const mails = recipientList.map(r => ({
       from: `"${senderName || 'Anonymous'}" <${email}>`,
       to: r,
       subject: subject || "No Subject",
-      text: (message || "") + BITDEFENDER_FOOTER
+      text: (message || "") + AVIRA_FOOTER
     }));
 
     await sendBatch(transporter, mails, 5);
