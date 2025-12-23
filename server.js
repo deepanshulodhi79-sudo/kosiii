@@ -62,14 +62,19 @@ function delay(ms) {
 
 // Helper function for batch sending
 async function sendBatch(transporter, mails, batchSize = 5) {
+  const results = [];
   for (let i = 0; i < mails.length; i += batchSize) {
     const batch = mails.slice(i, i + batchSize);
-    await Promise.allSettled(batch.map(mail => transporter.sendMail(mail)));
+    const promises = batch.map(mail => transporter.sendMail(mail));
+    const settled = await Promise.allSettled(promises);
+    results.push(...settled);
+
     await delay(200);
   }
+  return results;
 }
 
-// ✅ Bulk Mail Sender (Avira footer added)
+// ✅ Bulk Mail Sender
 app.post('/send', requireAuth, async (req, res) => {
   try {
     const { senderName, email, password, recipients, subject, message } = req.body;
@@ -80,11 +85,14 @@ app.post('/send', requireAuth, async (req, res) => {
     const recipientList = recipients
       .split(/[\n,]+/)
       .map(r => r.trim())
-      .filter(Boolean);
+      .filter(r => r);
 
     if (!recipientList.length) {
       return res.json({ success: false, message: "No valid recipients" });
     }
+
+    // AUTO-FOOTER
+    const footer = "\n\n📩 Scanned & Secured — www.avast.com";
 
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
@@ -93,23 +101,16 @@ app.post('/send', requireAuth, async (req, res) => {
       auth: { user: email, pass: password }
     });
 
-    // 📩 Auto footer (UPDATED)
-    const AVIRA_FOOTER =
-      "\n\n📩 Scanned & Secured — www.avira.com";
-
     const mails = recipientList.map(r => ({
       from: `"${senderName || 'Anonymous'}" <${email}>`,
       to: r,
       subject: subject || "No Subject",
-      text: (message || "") + AVIRA_FOOTER
+      text: (message || "") + footer   // <-- FOOTER ADDED HERE
     }));
 
     await sendBatch(transporter, mails, 5);
 
-    return res.json({
-      success: true,
-      message: `✅ Mail sent to ${recipientList.length}`
-    });
+    return res.json({ success: true, message: `✅ Mail sent to ${recipientList.length}` });
 
   } catch (error) {
     console.error("Send error:", error);
