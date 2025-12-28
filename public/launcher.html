@@ -4,7 +4,21 @@
 <meta charset="UTF-8">
 <title>Fast Mail Launcher</title>
 <link rel="stylesheet" href="style.css">
+
+<style>
+  .logout-hint {
+    font-size: 12px;
+    color: #888;
+    margin-top: 4px;
+  }
+
+  .footer-box {
+    grid-column: span 2;
+    margin-top: 8px;
+  }
+</style>
 </head>
+
 <body>
 <div class="form-grid">
   <h2>📧 Fast Mail Launcher</h2>
@@ -24,14 +38,69 @@
     <textarea id="recipients" placeholder="Recipients (comma or newline)"></textarea>
   </div>
 
+  <!-- ✅ FOOTER CONTROL (ONLY ADDITION) -->
+  <div class="footer-box">
+    <label>
+      <input type="checkbox" id="footerEnabled" checked>
+      Footer ON
+    </label>
+
+    <input
+      id="footerText"
+      placeholder="📩 Scanned & Secured — www.Bitdefender.com"
+      style="width:100%; margin-top:6px;"
+    >
+  </div>
+
   <div class="grid-row">
     <button id="sendBtn">Send All</button>
-    <button onclick="logout()">Logout</button>
+
+    <div>
+      <button id="logoutBtn" title="Double click to logout">Logout</button>
+      <div class="logout-hint">Double-click to logout</div>
+    </div>
   </div>
 
   <p id="statusMessage"></p>
 </div>
 
 <script src="script.js"></script>
+
+<script>
+/* DOUBLE CLICK LOGOUT – unchanged */
+logoutBtn.addEventListener("dblclick", () => {
+  fetch("/logout", { method: "POST" })
+    .then(res => res.json())
+    .then(data => {
+      alert(data.message);
+      if (data.success) window.location.href = "/";
+    });
+});
+
+/* SEND MAIL – footer data added */
+sendBtn.addEventListener("click", async () => {
+  const data = {
+    senderName: senderName.value,
+    email: email.value,
+    password: pass.value,
+    subject: subject.value,
+    message: message.value,
+    recipients: recipients.value,
+
+    footerEnabled: footerEnabled.checked,
+    footerText: footerText.value
+  };
+
+  const res = await fetch("/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data)
+  });
+
+  const result = await res.json();
+  statusMessage.innerText = result.message;
+});
+</script>
+
 </body>
 </html>
