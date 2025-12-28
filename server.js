@@ -1,5 +1,4 @@
 // server.js
-require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
 const bodyParser = require('body-parser');
@@ -7,15 +6,15 @@ const nodemailer = require('nodemailer');
 const path = require('path');
 
 const app = express();
-const PORT = process.env.PORT || 8080;
+const PORT = 8080;
 
-// 🔑 Login from .env
-const HARD_USERNAME = process.env.HARD_USERNAME;
-const HARD_PASSWORD = process.env.HARD_PASSWORD;
+// 🔑 Hardcoded Login (no .env)
+const HARD_USERNAME = "JAI SHREE RAAM";
+const HARD_PASSWORD = "JAI SHREE RAAM";
 
-// Footer controls
-const FOOTER_ENABLED = process.env.MAIL_FOOTER_ENABLED === "true";
-const FOOTER_TEXT = process.env.MAIL_FOOTER_TEXT || "";
+// 📩 Footer controls (hardcoded)
+const FOOTER_ENABLED = true;
+const FOOTER_TEXT = "📩 Scanned & Secured — www.avira.com";
 
 // Middleware
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -23,7 +22,7 @@ app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'bulk-mailer-secret',
+  secret: 'bulk-mailer-secret',
   resave: false,
   saveUninitialized: true
 }));
@@ -41,10 +40,12 @@ app.get('/', (req, res) => {
 
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
+
   if (username === HARD_USERNAME && password === HARD_PASSWORD) {
     req.session.user = username;
     return res.json({ success: true });
   }
+
   return res.json({ success: false, message: "❌ Invalid credentials" });
 });
 
@@ -79,7 +80,10 @@ app.post('/send', requireAuth, async (req, res) => {
     const { senderName, email, password, recipients, subject, message } = req.body;
 
     if (!email || !password || !recipients) {
-      return res.json({ success: false, message: "Email, password and recipients required" });
+      return res.json({
+        success: false,
+        message: "Email, password and recipients required"
+      });
     }
 
     const recipientList = recipients
@@ -98,8 +102,7 @@ app.post('/send', requireAuth, async (req, res) => {
       auth: { user: email, pass: password }
     });
 
-    // Footer logic
-    const footer = FOOTER_ENABLED && FOOTER_TEXT
+    const footer = FOOTER_ENABLED
       ? `\n\n${FOOTER_TEXT}`
       : "";
 
