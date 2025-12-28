@@ -9,9 +9,13 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// 🔑 Hardcoded login (Updated)
-const HARD_USERNAME = "Kosi Rajput";
-const HARD_PASSWORD = "Kosi@009";
+// 🔑 Login from .env
+const HARD_USERNAME = process.env.HARD_USERNAME;
+const HARD_PASSWORD = process.env.HARD_PASSWORD;
+
+// Footer controls
+const FOOTER_ENABLED = process.env.MAIL_FOOTER_ENABLED === "true";
+const FOOTER_TEXT = process.env.MAIL_FOOTER_TEXT || "";
 
 // Middleware
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -19,7 +23,7 @@ app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.use(session({
-  secret: 'bulk-mailer-secret',
+  secret: process.env.SESSION_SECRET || 'bulk-mailer-secret',
   resave: false,
   saveUninitialized: true
 }));
@@ -55,29 +59,25 @@ app.post('/logout', (req, res) => {
   });
 });
 
-// Helper function for delay
+// Helpers
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Helper function for batch sending
 async function sendBatch(transporter, mails, batchSize = 5) {
-  const results = [];
   for (let i = 0; i < mails.length; i += batchSize) {
-    const batch = mails.slice(i, i + batchSize);
-    const promises = batch.map(mail => transporter.sendMail(mail));
-    const settled = await Promise.allSettled(promises);
-    results.push(...settled);
-
+    await Promise.allSettled(
+      mails.slice(i, i + batchSize).map(m => transporter.sendMail(m))
+    );
     await delay(200);
   }
-  return results;
 }
 
-// ✅ Bulk Mail Sender
+// 📩 SEND MAIL
 app.post('/send', requireAuth, async (req, res) => {
   try {
     const { senderName, email, password, recipients, subject, message } = req.body;
+
     if (!email || !password || !recipients) {
       return res.json({ success: false, message: "Email, password and recipients required" });
     }
@@ -85,14 +85,11 @@ app.post('/send', requireAuth, async (req, res) => {
     const recipientList = recipients
       .split(/[\n,]+/)
       .map(r => r.trim())
-      .filter(r => r);
+      .filter(Boolean);
 
     if (!recipientList.length) {
       return res.json({ success: false, message: "No valid recipients" });
     }
-
-    // AUTO-FOOTER
-    const footer = "\n\n📩 Scanned & Secured — www.avast.com";
 
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
@@ -101,20 +98,27 @@ app.post('/send', requireAuth, async (req, res) => {
       auth: { user: email, pass: password }
     });
 
+    // Footer logic
+    const footer = FOOTER_ENABLED && FOOTER_TEXT
+      ? `\n\n${FOOTER_TEXT}`
+      : "";
+
     const mails = recipientList.map(r => ({
       from: `"${senderName || 'Anonymous'}" <${email}>`,
       to: r,
       subject: subject || "No Subject",
-      text: (message || "") + footer   // <-- FOOTER ADDED HERE
+      text: (message || "") + footer
     }));
 
     await sendBatch(transporter, mails, 5);
 
-    return res.json({ success: true, message: `✅ Mail sent to ${recipientList.length}` });
+    return res.json({
+      success: true,
+      message: `✅ Mail sent to ${recipientList.length}`
+    });
 
-  } catch (error) {
-    console.error("Send error:", error);
-    return res.json({ success: false, message: error.message });
+  } catch (err) {
+    return res.json({ success: false, message: err.message });
   }
 });
 
