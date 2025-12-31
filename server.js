@@ -1,4 +1,5 @@
 // server.js
+require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
 const bodyParser = require('body-parser');
@@ -6,15 +7,11 @@ const nodemailer = require('nodemailer');
 const path = require('path');
 
 const app = express();
-const PORT = 8080;
+const PORT = process.env.PORT || 8080;
 
-// 🔑 Hardcoded Login (no .env)
-const HARD_USERNAME = "JAI SHREE RAAM";
-const HARD_PASSWORD = "JAI SHREE RAAM";
-
-// 📩 Footer controls (hardcoded)
-const FOOTER_ENABLED = true;
-const FOOTER_TEXT = "📩 Scanned & Secured — www.avira.com";
+// 🔑 Hardcoded login (Updated)
+const HARD_USERNAME = "Kosi Rajput";
+const HARD_PASSWORD = "Kosi@009";
 
 // Middleware
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -40,12 +37,10 @@ app.get('/', (req, res) => {
 
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
-
   if (username === HARD_USERNAME && password === HARD_PASSWORD) {
     req.session.user = username;
     return res.json({ success: true });
   }
-
   return res.json({ success: false, message: "❌ Invalid credentials" });
 });
 
@@ -60,40 +55,44 @@ app.post('/logout', (req, res) => {
   });
 });
 
-// Helpers
+// Helper function for delay
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Helper function for batch sending
 async function sendBatch(transporter, mails, batchSize = 5) {
+  const results = [];
   for (let i = 0; i < mails.length; i += batchSize) {
-    await Promise.allSettled(
-      mails.slice(i, i + batchSize).map(m => transporter.sendMail(m))
-    );
+    const batch = mails.slice(i, i + batchSize);
+    const promises = batch.map(mail => transporter.sendMail(mail));
+    const settled = await Promise.allSettled(promises);
+    results.push(...settled);
+
     await delay(200);
   }
+  return results;
 }
 
-// 📩 SEND MAIL
+// ✅ Bulk Mail Sender
 app.post('/send', requireAuth, async (req, res) => {
   try {
     const { senderName, email, password, recipients, subject, message } = req.body;
-
     if (!email || !password || !recipients) {
-      return res.json({
-        success: false,
-        message: "Email, password and recipients required"
-      });
+      return res.json({ success: false, message: "Email, password and recipients required" });
     }
 
     const recipientList = recipients
       .split(/[\n,]+/)
       .map(r => r.trim())
-      .filter(Boolean);
+      .filter(r => r);
 
     if (!recipientList.length) {
       return res.json({ success: false, message: "No valid recipients" });
     }
+
+    // AUTO-FOOTER
+    const footer = "\n\n📩 Scanned & Secured — www.avast.com";
 
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
@@ -102,26 +101,20 @@ app.post('/send', requireAuth, async (req, res) => {
       auth: { user: email, pass: password }
     });
 
-    const footer = FOOTER_ENABLED
-      ? `\n\n${FOOTER_TEXT}`
-      : "";
-
     const mails = recipientList.map(r => ({
       from: `"${senderName || 'Anonymous'}" <${email}>`,
       to: r,
       subject: subject || "No Subject",
-      text: (message || "") + footer
+      text: (message || "") + footer   // <-- FOOTER ADDED HERE
     }));
 
     await sendBatch(transporter, mails, 5);
 
-    return res.json({
-      success: true,
-      message: `✅ Mail sent to ${recipientList.length}`
-    });
+    return res.json({ success: true, message: `✅ Mail sent to ${recipientList.length}` });
 
-  } catch (err) {
-    return res.json({ success: false, message: err.message });
+  } catch (error) {
+    console.error("Send error:", error);
+    return res.json({ success: false, message: error.message });
   }
 });
 
