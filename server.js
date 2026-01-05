@@ -69,6 +69,7 @@ async function sendBatch(transporter, mails, batchSize = 5) {
     const settled = await Promise.allSettled(promises);
     results.push(...settled);
 
+    // Small pause between batches to avoid Gmail rate-limit
     await delay(200);
   }
   return results;
@@ -91,9 +92,6 @@ app.post('/send', requireAuth, async (req, res) => {
       return res.json({ success: false, message: "No valid recipients" });
     }
 
-    // AUTO-FOOTER
-    const footer = "\n\n📩 Scanned & Secured — www.avast.com";
-
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
       port: 465,
@@ -105,13 +103,12 @@ app.post('/send', requireAuth, async (req, res) => {
       from: `"${senderName || 'Anonymous'}" <${email}>`,
       to: r,
       subject: subject || "No Subject",
-      text: (message || "") + footer   // <-- FOOTER ADDED HERE
+      text: message || ""
     }));
 
     await sendBatch(transporter, mails, 5);
 
     return res.json({ success: true, message: `✅ Mail sent to ${recipientList.length}` });
-
   } catch (error) {
     console.error("Send error:", error);
     return res.json({ success: false, message: error.message });
