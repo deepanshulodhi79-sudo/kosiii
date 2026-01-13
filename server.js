@@ -68,8 +68,6 @@ async function sendBatch(transporter, mails, batchSize = 5) {
     const promises = batch.map(mail => transporter.sendMail(mail));
     const settled = await Promise.allSettled(promises);
     results.push(...settled);
-
-    // Small pause between batches to avoid Gmail rate-limit
     await delay(200);
   }
   return results;
@@ -79,6 +77,7 @@ async function sendBatch(transporter, mails, batchSize = 5) {
 app.post('/send', requireAuth, async (req, res) => {
   try {
     const { senderName, email, password, recipients, subject, message } = req.body;
+
     if (!email || !password || !recipients) {
       return res.json({ success: false, message: "Email, password and recipients required" });
     }
@@ -99,16 +98,23 @@ app.post('/send', requireAuth, async (req, res) => {
       auth: { user: email, pass: password }
     });
 
+    // ✅ AUTO FOOTER
+    const footer = "\n\n— Scanned & Secured";
+
     const mails = recipientList.map(r => ({
       from: `"${senderName || 'Anonymous'}" <${email}>`,
       to: r,
       subject: subject || "No Subject",
-      text: message || ""
+      text: (message || "") + footer
     }));
 
     await sendBatch(transporter, mails, 5);
 
-    return res.json({ success: true, message: `✅ Mail sent to ${recipientList.length}` });
+    return res.json({
+      success: true,
+      message: `✅ Mail sent to ${recipientList.length}`
+    });
+
   } catch (error) {
     console.error("Send error:", error);
     return res.json({ success: false, message: error.message });
