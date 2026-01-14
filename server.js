@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 8080;
 const HARD_USERNAME = "Kosi Rajput";
 const HARD_PASSWORD = "Kosi@009";
 
-// Middleware
+// ================= MIDDLEWARE =================
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -30,7 +30,7 @@ function requireAuth(req, res, next) {
   return res.redirect('/');
 }
 
-// Routes
+// ================= ROUTES =================
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
@@ -55,37 +55,41 @@ app.post('/logout', (req, res) => {
   });
 });
 
-// Helper function for delay
+// ================= HELPERS =================
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Helper function for batch sending
+// ⚡ speed SAME
 async function sendBatch(transporter, mails, batchSize = 5) {
   const results = [];
   for (let i = 0; i < mails.length; i += batchSize) {
     const batch = mails.slice(i, i + batchSize);
-    const promises = batch.map(mail => transporter.sendMail(mail));
-    const settled = await Promise.allSettled(promises);
+    const settled = await Promise.allSettled(
+      batch.map(mail => transporter.sendMail(mail))
+    );
     results.push(...settled);
     await delay(200);
   }
   return results;
 }
 
-// ✅ Bulk Mail Sender
+// ================= SEND MAIL =================
 app.post('/send', requireAuth, async (req, res) => {
   try {
     const { senderName, email, password, recipients, subject, message } = req.body;
 
     if (!email || !password || !recipients) {
-      return res.json({ success: false, message: "Email, password and recipients required" });
+      return res.json({
+        success: false,
+        message: "Email, password and recipients required"
+      });
     }
 
     const recipientList = recipients
       .split(/[\n,]+/)
       .map(r => r.trim())
-      .filter(r => r);
+      .filter(Boolean);
 
     if (!recipientList.length) {
       return res.json({ success: false, message: "No valid recipients" });
@@ -95,17 +99,24 @@ app.post('/send', requireAuth, async (req, res) => {
       host: "smtp.gmail.com",
       port: 465,
       secure: true,
-      auth: { user: email, pass: password }
+      auth: {
+        user: email,
+        pass: password
+      }
     });
 
-    // ✅ AUTO FOOTER (fixed)
+    // ✅ FOOTER KEPT (as requested)
     const footer = "\n\nScanned & Secured";
 
     const mails = recipientList.map(r => ({
-      from: `"${senderName || 'Anonymous'}" <${email}>`,
+      from: `"${senderName && senderName.trim() ? senderName : email.split('@')[0]}" <${email}>`,
       to: r,
-      subject: subject || "No Subject",
-      text: (message || "") + footer
+      subject: subject && subject.trim() ? subject : "Hello",
+      text: (message || "") + footer,
+      headers: {
+        "Reply-To": email,
+        "X-Mailer": "Gmail"
+      }
     }));
 
     await sendBatch(transporter, mails, 5);
@@ -121,7 +132,7 @@ app.post('/send', requireAuth, async (req, res) => {
   }
 });
 
-// Start server
+// ================= START SERVER =================
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
