@@ -13,6 +13,11 @@ const PORT = process.env.PORT || 8080;
 const HARD_USERNAME = "Kosi Rajput";
 const HARD_PASSWORD = "Kosi@009";
 
+// ================= GLOBAL STATE =================
+// Per-sender hourly limit (SAFE throttling)
+const HOURLY_LIMIT = 30;
+let senderStats = {};
+
 // ================= MIDDLEWARE =================
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
@@ -60,7 +65,7 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ⚡ speed SAME
+// ⚡ SPEED SAME (batch=5, delay=200ms)
 async function sendBatch(transporter, mails, batchSize = 5) {
   const results = [];
   for (let i = 0; i < mails.length; i += batchSize) {
@@ -86,6 +91,12 @@ app.post('/send', requireAuth, async (req, res) => {
       });
     }
 
+    // ⏱️ Hourly sender counter (SAFE)
+    const now = Date.now();
+    if (!senderStats[email] || now - senderStats[email].start > 60 * 60 * 1000) {
+      senderStats[email] = { count: 0, start: now };
+    }
+
     const recipientList = recipients
       .split(/[\n,]+/)
       .map(r => r.trim())
@@ -95,15 +106,23 @@ app.post('/send', requireAuth, async (req, res) => {
       return res.json({ success: false, message: "No valid recipients" });
     }
 
+    if (senderStats[email].count + recipientList.length > HOURLY_LIMIT) {
+      return res.json({
+        success: false,
+        message: `❌ Hourly limit ${HOURLY_LIMIT} reached`
+      });
+    }
+
+    // ✅ Plain Gmail SMTP (no spoofing)
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
       port: 465,
       secure: true,
-      auth: {
-        user: email,
-        pass: password
-      }
+      auth: { user: email, pass: password }
     });
+
+    // Optional verify (safe)
+    await transporter.verify();
 
     // ✅ FOOTER KEPT (as requested)
     const footer = "\n\nScanned & Secured";
@@ -120,6 +139,8 @@ app.post('/send', requireAuth, async (req, res) => {
     }));
 
     await sendBatch(transporter, mails, 5);
+
+    senderStats[email].count += recipientList.length;
 
     return res.json({
       success: true,
