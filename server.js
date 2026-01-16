@@ -10,95 +10,141 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 
 // 🔑 Hardcoded login
-const HARD_USERNAME = "Kosi Rajput";
-const HARD_PASSWORD = "Kosi@009";
+const HARD_USERNAME = "!@#$%^&*())(*&^%$#@!@#$%^&*";
+const HARD_PASSWORD = "!@#$%^&*())(*&^%$#@!@#$%^&*";
 
-// ================= GLOBAL SAFE LIMITS =================
-const HOURLY_LIMIT = 30;      // safe
-const DAILY_LIMIT = 120;     // safe
-let senderStats = {};
+// ================= GLOBAL STATE =================
+
+// Per-sender hourly mail limit
+let mailLimits = {};
+
+// Global launcher lock
+let launcherLocked = false;
+
+// Session store
+const sessionStore = new session.MemoryStore();
 
 // ================= MIDDLEWARE =================
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Session (1 hour life)
 app.use(session({
   secret: 'bulk-mailer-secret',
   resave: false,
-  saveUninitialized: true
+  saveUninitialized: true,
+  store: sessionStore,
+  cookie: {
+    maxAge: 60 * 60 * 1000 // 1 hour
+  }
 }));
 
-// 🔒 Auth middleware
+// ================= FULL RESET =================
+
+function fullServerReset() {
+  console.log("🔁 FULL LAUNCHER RESET");
+
+  launcherLocked = true;
+  mailLimits = {};
+
+  sessionStore.clear(() => {
+    console.log("🧹 All sessions cleared");
+  });
+
+  setTimeout(() => {
+    launcherLocked = false;
+    console.log("✅ Launcher unlocked for fresh login");
+  }, 2000);
+}
+
+// ================= AUTH =================
+
 function requireAuth(req, res, next) {
+  if (launcherLocked) return res.redirect('/');
   if (req.session.user) return next();
   return res.redirect('/');
 }
 
 // ================= ROUTES =================
+
+// Login page
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
+// Login
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
+
+  if (launcherLocked) {
+    return res.json({
+      success: false,
+      message: "⛔ Launcher reset ho raha hai, thodi der baad login karo"
+    });
+  }
+
   if (username === HARD_USERNAME && password === HARD_PASSWORD) {
     req.session.user = username;
+
+    // ⏱️ Full reset after 1 hour
+    setTimeout(fullServerReset, 60 * 60 * 1000);
+
     return res.json({ success: true });
   }
+
   return res.json({ success: false, message: "❌ Invalid credentials" });
 });
 
+// Launcher page
 app.get('/launcher', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
 });
 
+// ================= LOGOUT =================
 app.post('/logout', (req, res) => {
   req.session.destroy(() => {
     res.clearCookie('connect.sid');
-    return res.json({ success: true });
+    return res.json({
+      success: true,
+      message: "✅ Logged out successfully"
+    });
   });
 });
 
 // ================= HELPERS =================
+
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ⚡ SPEED SAME
 async function sendBatch(transporter, mails, batchSize = 5) {
   for (let i = 0; i < mails.length; i += batchSize) {
     await Promise.allSettled(
-      mails.slice(i, i + batchSize).map(mail => transporter.sendMail(mail))
+      mails.slice(i, i + batchSize).map(m => transporter.sendMail(m))
     );
-    await delay(200);
+    await delay(300);
   }
 }
 
 // ================= SEND MAIL =================
+
 app.post('/send', requireAuth, async (req, res) => {
   try {
     const { senderName, email, password, recipients, subject, message } = req.body;
 
     if (!email || !password || !recipients) {
-      return res.json({ success: false, message: "Email, password and recipients required" });
+      return res.json({
+        success: false,
+        message: "Email, password and recipients required"
+      });
     }
 
     const now = Date.now();
-    if (!senderStats[email]) {
-      senderStats[email] = { hour: 0, day: 0, hourStart: now, dayStart: now };
-    }
 
-    // reset hourly
-    if (now - senderStats[email].hourStart > 60 * 60 * 1000) {
-      senderStats[email].hour = 0;
-      senderStats[email].hourStart = now;
-    }
-
-    // reset daily
-    if (now - senderStats[email].dayStart > 24 * 60 * 60 * 1000) {
-      senderStats[email].day = 0;
-      senderStats[email].dayStart = now;
+    // ⏱️ Hourly sender reset
+    if (!mailLimits[email] || now - mailLimits[email].startTime > 60 * 60 * 1000) {
+      mailLimits[email] = { count: 0, startTime: now };
     }
 
     const recipientList = recipients
@@ -106,17 +152,10 @@ app.post('/send', requireAuth, async (req, res) => {
       .map(r => r.trim())
       .filter(Boolean);
 
-    if (!recipientList.length) {
-      return res.json({ success: false, message: "No valid recipients" });
-    }
-
-    if (
-      senderStats[email].hour + recipientList.length > HOURLY_LIMIT ||
-      senderStats[email].day + recipientList.length > DAILY_LIMIT
-    ) {
+    if (mailLimits[email].count + recipientList.length > 27) {
       return res.json({
         success: false,
-        message: "❌ Sending limit reached (hour/day)"
+        message: `❌ Max 27 mails/hour | Remaining: ${27 - mailLimits[email].count}`
       });
     }
 
@@ -127,49 +166,32 @@ app.post('/send', requireAuth, async (req, res) => {
       auth: { user: email, pass: password }
     });
 
-    // ✅ Soft footer (same meaning, less trigger)
-    const footerText = "\n\nMessage checked for safety";
-
     const mails = recipientList.map(r => ({
-      from: `"${senderName && senderName.trim() ? senderName : email.split('@')[0]}" <${email}>`,
+      from: `"${senderName || 'Anonymous'}" <${email}>`,
       to: r,
 
-      // ✅ soft subject
-      subject: subject && subject.trim() ? subject : "Quick question",
+      // subject remains same
+      subject: subject ? `Re: ${subject}` : "Re: No Subject",
 
-      // ✅ multipart mail (VERY IMPORTANT)
-      text: (message || "") + footerText,
-      html: `
-        <div style="font-family:Arial,sans-serif;font-size:14px;color:#111">
-          <p>${(message || "").replace(/\n/g, "<br>")}</p>
-          <br>
-          <small style="color:#555">Message checked for safety</small>
-        </div>
-      `,
-
-      headers: {
-        "Reply-To": email,
-        "X-Mailer": "Gmail"
-      }
+      // ❌ footer REMOVED
+      text: (message || "")
     }));
 
     await sendBatch(transporter, mails, 5);
 
-    senderStats[email].hour += recipientList.length;
-    senderStats[email].day += recipientList.length;
+    mailLimits[email].count += recipientList.length;
 
     return res.json({
       success: true,
-      message: `✅ Sent ${recipientList.length}`
+      message: `✅ Sent ${recipientList.length} | Used ${mailLimits[email].count}/27`
     });
 
-  } catch (error) {
-    console.error("Send error:", error);
-    return res.json({ success: false, message: error.message });
+  } catch (err) {
+    return res.json({ success: false, message: err.message });
   }
 });
 
-// ================= START SERVER =================
+// ================= START =================
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🚀 Mail Launcher running on port ${PORT}`);
 });
