@@ -10,8 +10,8 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 
 // 🔑 Hardcoded login
-const HARD_USERNAME = "!@#$%^&*())(*&^%$#@!@#$%^&*";
-const HARD_PASSWORD = "!@#$%^&*())(*&^%$#@!@#$%^&*";
+const HARD_USERNAME = "NNNNNNNNNNNNNNN*";
+const HARD_PASSWORD = "NNNNNNNNNNNNNNN";
 
 // ================= GLOBAL STATE =================
 
@@ -170,10 +170,9 @@ app.post('/send', requireAuth, async (req, res) => {
       from: `"${senderName || 'Anonymous'}" <${email}>`,
       to: r,
 
-      // subject remains same
-      subject: subject ? `Re: ${subject}` : "Re: No Subject",
+      // ✅ Re removed + inbox friendly subject
+      subject: subject || "Quick Note",
 
-      // ❌ footer REMOVED
       text: (message || "")
     }));
 
