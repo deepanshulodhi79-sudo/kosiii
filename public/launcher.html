@@ -4,15 +4,6 @@
 <meta charset="UTF-8">
 <title>Fast Mail Launcher</title>
 <link rel="stylesheet" href="style.css">
-
-<style>
-  /* Optional UX hint */
-  .logout-hint {
-    font-size: 12px;
-    color: #888;
-    margin-top: 4px;
-  }
-</style>
 </head>
 
 <body>
@@ -20,56 +11,27 @@
   <h2>📧 Fast Mail Launcher</h2>
 
   <div class="grid-row">
-    <input id="senderName" placeholder="Sender Name">
-    <input id="email" placeholder="Your Gmail">
+    <input id="senderName" placeholder="Sender Name (e.g. Rahul Sharma)">
+    <input id="email" placeholder="Your Gmail Address">
   </div>
 
   <div class="grid-row">
-    <input id="pass" type="password" placeholder="App Password">
-    <input id="subject" placeholder="Subject">
+    <input id="pass" type="password" placeholder="16-Digit App Password">
+    <input id="subject" placeholder="Subject Line">
   </div>
 
   <div class="grid-row">
     <textarea id="message" placeholder="Message Body"></textarea>
-    <textarea id="recipients" placeholder="Recipients (comma or newline)"></textarea>
+    <textarea id="recipients" placeholder="Recipients (one per line or comma-separated)"></textarea>
   </div>
 
   <div class="grid-row">
-    <button id="sendBtn">Send All</button>
-
-    <!-- 🔓 DOUBLE CLICK LOGOUT BUTTON -->
-    <div>
-      <button id="logoutBtn" title="Double click to logout">Logout</button>
-      <div class="logout-hint">Double-click to logout</div>
-    </div>
+    <button id="sendBtn">Send Mails to Inbox</button>
   </div>
 
   <p id="statusMessage"></p>
 </div>
 
 <script src="script.js"></script>
-
-<script>
-/* ===============================
-   DOUBLE-CLICK LOGOUT LOGIC
-================================ */
-
-const logoutBtn = document.getElementById("logoutBtn");
-
-logoutBtn.addEventListener("dblclick", () => {
-  fetch("/logout", { method: "POST" })
-    .then(res => res.json())
-    .then(data => {
-      alert(data.message);
-      if (data.success) {
-        window.location.href = "/";
-      }
-    })
-    .catch(() => {
-      alert("Logout failed");
-    });
-});
-</script>
-
 </body>
 </html>
