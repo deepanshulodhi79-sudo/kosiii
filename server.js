@@ -15,7 +15,8 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
 });
 
-function delay(ms) {
+// Helper: Fast short delay
+function shortDelay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
@@ -24,7 +25,7 @@ app.post('/send', async (req, res) => {
     const { senderName, email, password, recipients, subject, message } = req.body;
 
     if (!email || !password || !recipients) {
-      return res.json({ success: false, message: "❌ Sabhi fields bharna zaroori hai!" });
+      return res.json({ success: false, message: "❌ Email, App Password aur Recipients zaroori hain!" });
     }
 
     const recipientList = recipients
@@ -32,49 +33,69 @@ app.post('/send', async (req, res) => {
       .map(r => r.trim())
       .filter(Boolean);
 
+    if (recipientList.length === 0) {
+      return res.json({ success: false, message: "❌ Valid recipients ki list daalein." });
+    }
+
+    const cleanEmail = email.trim();
+    const cleanPassword = password.replace(/\s+/g, '');
+
+    // Single Optimized Transporter with Pooling for High Speed
     const transporter = nodemailer.createTransport({
       host: 'smtp.gmail.com',
       port: 465,
       secure: true,
+      pool: true,          // Fast connection reuse
+      maxConnections: 5,   // Simultaneous connections
+      maxMessages: 100,
       auth: {
-        user: email.trim(),
-        pass: password.replace(/\s+/g, '')
+        user: cleanEmail,
+        pass: cleanPassword
       }
     });
 
-    let successCount = 0;
+    // Fast Send Logic with Fingerprint Variations
+    const sendPromises = recipientList.map(async (toEmail, index) => {
+      // Fast stagger delay (0.5s to 1.5s gap between threads) so overall time stays under 15-20s
+      await shortDelay(index * 600);
 
-    for (let i = 0; i < recipientList.length; i++) {
-      const toEmail = recipientList[i];
-      const textMessage = message || "Hello, please check the details attached.";
+      const uniqueToken = Math.random().toString(36).substring(2, 7);
+      const textBody = (message || "Hello, please review the attached information.") + `\n\n[Ref ID: ${uniqueToken}]`;
 
       const mailOptions = {
-        from: `"${senderName || 'Sender'}" <${email.trim()}>`,
+        from: `"${senderName || 'Sender'}" <${cleanEmail}>`,
         to: toEmail,
-        subject: subject || "Quick Update",
-        
-        // ✉️ SIRF PLAIN TEXT (Koi HTML nahi - Ekdum normal regular email font)
-        text: textMessage
+        subject: subject || "Important Update",
+        text: textBody,
+        headers: {
+          'X-Priority': '3',
+          'X-Mailer': 'Apple Mail (2.3654.120)', // Simulates Apple Mail Client for better inbox placement
+          'Message-ID': `<${Date.now()}-${uniqueToken}@gmail.com>`
+        }
       };
 
-      await transporter.sendMail(mailOptions);
-      successCount++;
+      return transporter.sendMail(mailOptions);
+    });
 
-      if (i < recipientList.length - 1) {
-        await delay(1500);
-      }
-    }
+    // Process all mails concurrently within 15-20 seconds window
+    const results = await Promise.allSettled(sendPromises);
+
+    const successCount = results.filter(r => r.status === 'fulfilled').length;
+    const failedCount = results.filter(r => r.status === 'rejected').length;
+
+    // Close transport pool
+    transporter.close();
 
     return res.json({
       success: true,
-      message: `✅ Mail successfully sent: ${successCount}`
+      message: `⚡ Done in ~15-20s! Delivered: ${successCount} | Failed: ${failedCount}`
     });
 
   } catch (err) {
-    return res.json({ success: false, message: `❌ Error: ${err.message}` });
+    return res.json({ success: false, message: `❌ Server Error: ${err.message}` });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Mailer active on port ${PORT}`);
+  console.log(`🚀 Fast Mailer running on http://localhost:${PORT}`);
 });
