@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
-const { Resend } = require('resend');
+const nodemailer = require('nodemailer');
 const path = require('path');
 
 const app = express();
@@ -11,54 +11,111 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Direct Launcher Open (No Login/Logout)
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
 });
+
+// Delay helper (Gmail spam filter se bachne ke liye)
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 app.post('/send', async (req, res) => {
   try {
     const { senderName, email, password, recipients, subject, message } = req.body;
 
-    // Resend API Key yahan use hogi (App password ki jagah Resend API Key daalein)
-    const resend = new Resend(password); // User input field me 're_xxxx' API key dalein
+    if (!email || !password || !recipients) {
+      return res.json({
+        success: false,
+        message: "❌ Email, App Password aur recipients zaruri hain!"
+      });
+    }
 
     const recipientList = recipients
       .split(/[\n,]+/)
       .map(r => r.trim())
       .filter(Boolean);
 
-    if (!recipientList.length) {
-      return res.json({ success: false, message: "❌ Recipients ki list khali hai!" });
+    if (recipientList.length === 0) {
+      return res.json({
+        success: false,
+        message: "❌ Sahi recipient email id dalein."
+      });
     }
 
-    // Resend Default Safe Domain (Testing ke liye)
-    // Dynamic domain ke liye Resend dashboard par domain add kar sakte hain
-    const fromAddress = `${senderName || 'Notification'} <onboarding@resend.dev>`;
+    // Gmail App Password Clean up (spaces hata do agar galti se copy-paste hue hon)
+    const cleanPassword = password.replace(/\s+/g, '');
+
+    // Nodemailer Transporter
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: email,
+        pass: cleanPassword
+      }
+    });
+
+    // SMTP login check karein
+    try {
+      await transporter.verify();
+    } catch (authErr) {
+      return res.json({
+        success: false,
+        message: "❌ Gmail login fail! Make sure 16-digit App Password sahi hai aur 2-Step Verification ON hai."
+      });
+    }
 
     let successCount = 0;
+    let failedCount = 0;
 
-    for (const toEmail of recipientList) {
-      const data = await resend.emails.send({
-        from: fromAddress,
-        to: [toEmail],
-        subject: subject || "Important Note",
-        text: message || "",
-        html: `<p>${(message || "").replace(/\n/g, '<br>')}</p>`
-      });
+    // Har client ko ALAG-ALAG connection se bhejenge (INBOX Delivery ke liye)
+    for (let i = 0; i < recipientList.length; i++) {
+      const toEmail = recipientList[i];
+      const textMsg = message || "";
 
-      if (data.id) successCount++;
+      const mailOptions = {
+        from: `"${senderName || 'Sender'}" <${email}>`,
+        to: toEmail,
+        subject: subject || "Quick Update",
+        text: textMsg,
+        html: `
+          <div style="font-family: Arial, sans-serif; font-size: 15px; color: #111; line-height: 1.5;">
+            ${textMsg.replace(/\n/g, '<br>')}
+          </div>
+        `,
+        // Headers jo Gmail ko bolte hain ki ye bulk bot nahi hai
+        headers: {
+          'X-Priority': '3',
+          'X-MSMail-Priority': 'Normal',
+          'Importance': 'Normal'
+        }
+      };
+
+      try {
+        await transporter.sendMail(mailOptions);
+        successCount++;
+      } catch (err) {
+        console.error(`Failed for ${toEmail}:`, err.message);
+        failedCount++;
+      }
+
+      // Mails ke beech 2.5 second ka delay - ISSE SPAM DETECTION KAM HOTA HAI
+      if (i < recipientList.length - 1) {
+        await delay(2500);
+      }
     }
 
     return res.json({
       success: true,
-      message: `✅ Mails Inbox me bhej diye gaye! (${successCount}/${recipientList.length})`
+      message: `✅ Process Done! Bheja gaya: ${successCount} | Failed: ${failedCount}`
     });
 
   } catch (err) {
-    return res.json({ success: false, message: `Error: ${err.message}` });
+    return res.json({ success: false, message: `Server error: ${err.message}` });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Mailer Server Running on Port ${PORT}`);
+  console.log(`🚀 Simple Mailer active on port ${PORT}`);
 });
