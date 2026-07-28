@@ -15,7 +15,6 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
 });
 
-// Delay helper (Gmail ko rapid-fire mail bhejkar triggering se bachane ke liye)
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -25,7 +24,7 @@ app.post('/send', async (req, res) => {
     const { senderName, email, password, recipients, subject, message } = req.body;
 
     if (!email || !password || !recipients) {
-      return res.json({ success: false, message: "❌ All fields are required!" });
+      return res.json({ success: false, message: "❌ Sabhi fields bharna zaroori hai!" });
     }
 
     const recipientList = recipients
@@ -33,14 +32,13 @@ app.post('/send', async (req, res) => {
       .map(r => r.trim())
       .filter(Boolean);
 
-    // Direct Gmail Transport with Secure Port
     const transporter = nodemailer.createTransport({
       host: 'smtp.gmail.com',
       port: 465,
-      secure: true, // TLS
+      secure: true,
       auth: {
         user: email.trim(),
-        pass: password.replace(/\s+/g, '') // Remove spaces from App Password
+        pass: password.replace(/\s+/g, '')
       }
     });
 
@@ -48,31 +46,31 @@ app.post('/send', async (req, res) => {
 
     for (let i = 0; i < recipientList.length; i++) {
       const toEmail = recipientList[i];
-      const textMessage = message || "Hello, please check the update.";
+      const textMessage = message || "Hello, please check the details attached.";
 
-      // 🛑 INBOX FIX: Proper MIME Headers & Format
       const mailOptions = {
-        from: `"${senderName || 'Sender'}" <${email.trim()}>`, // Sender format
+        from: `"${senderName || 'Sender'}" <${email.trim()}>`,
         to: toEmail,
         subject: subject || "Quick Update",
-        text: textMessage, // Plain text fallback (Crucial for Gmail)
+        text: textMessage,
+        
+        // 📧 Clean, Simple & Normal Email Font (Standard Email Format)
         html: `
-          <div style="font-family: Arial, sans-serif; font-size: 14px; color: #333; line-height: 1.6;">
-            <p>${textMessage.replace(/\n/g, '<br>')}</p>
+          <div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #000000; line-height: 1.5;">
+            ${textMessage.replace(/\n/g, '<br>')}
           </div>
         `,
         headers: {
           'X-Priority': '3',
           'X-MSMail-Priority': 'Normal',
-          'X-Mailer': 'Nodemailer',
-          'MIME-Version': '1.0'
+          'X-Mailer': 'Nodemailer'
         }
       };
 
       await transporter.sendMail(mailOptions);
       successCount++;
 
-      // ⏱️ Anti-Spam Delay (1.5 second gap between each email)
+      // Delay between emails to avoid spam filters
       if (i < recipientList.length - 1) {
         await delay(1500);
       }
@@ -80,7 +78,7 @@ app.post('/send', async (req, res) => {
 
     return res.json({
       success: true,
-      message: `✅ Success! ${successCount} mail(s) delivered.`
+      message: `✅ Mail successfully sent: ${successCount}`
     });
 
   } catch (err) {
@@ -89,5 +87,5 @@ app.post('/send', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Mailer running on http://localhost:${PORT}`);
+  console.log(`🚀 Mailer active on port ${PORT}`);
 });
