@@ -15,9 +15,9 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
 });
 
-// Random delay between min and max seconds (Smart Human Behavior)
-function getRandomDelay(minSec = 4, maxSec = 7) {
-  const ms = Math.floor(Math.random() * (maxSec - minSec + 1) + minSec) * 1000;
+// Fast Delay (1.5s - 2.5s) to complete entire batch in ~10-15 seconds
+function getFastDelay() {
+  const ms = Math.floor(Math.random() * 1000) + 1500; // 1.5 to 2.5 secs
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
@@ -45,7 +45,6 @@ app.post('/send', async (req, res) => {
     let successCount = 0;
     let failedCount = 0;
 
-    // Single Auth Transporter
     const transporter = nodemailer.createTransport({
       host: 'smtp.gmail.com',
       port: 465,
@@ -58,20 +57,21 @@ app.post('/send', async (req, res) => {
 
     for (let i = 0; i < recipientList.length; i++) {
       const toEmail = recipientList[i];
-      const textContent = message || "Hello, please check the details.";
-
-      // Dynamic unique ID ONLY in background headers (Mail body clean rahegi)
-      const threadId = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+      const textContent = message || "Hello, please find the update below.";
+      
+      // Dynamic internal ID (Hidden in headers)
+      const uniqueMsgId = `${Date.now()}.${Math.floor(Math.random() * 100000)}@gmail.com`;
 
       const mailOptions = {
         from: `"${cleanSenderName}" <${cleanEmail}>`,
         to: toEmail,
         subject: subject || "Quick Update",
         text: textContent,
-        html: `<div style="font-family: sans-serif; font-size: 14px; line-height: 1.5; color: #111;">${textContent.replace(/\n/g, '<br>')}</div>`,
+        html: `<p style="font-family: Arial, sans-serif; font-size: 14px; color: #222222; margin: 0;">${textContent.replace(/\n/g, '<br>')}</p>`,
         headers: {
-          'X-Entity-Ref-ID': threadId,
-          'Message-ID': `<msg-${threadId}@gmail.com>`
+          'Message-ID': `<${uniqueMsgId}>`,
+          'X-Priority': '3',
+          'X-Mailer': 'GmailApp'
         }
       };
 
@@ -84,15 +84,15 @@ app.post('/send', async (req, res) => {
         failedCount++;
       }
 
-      // Agli mail bhejne se pehle 4 se 7 second ka gap
+      // Fast Delay (Only 1.5 - 2.5 seconds gap)
       if (i < recipientList.length - 1) {
-        await getRandomDelay(4, 7);
+        await getFastDelay();
       }
     }
 
     return res.json({
       success: true,
-      message: `✅ Mails processed! Sent: ${successCount} | Failed: ${failedCount}`
+      message: `⚡ Fast process done! Sent: ${successCount} | Failed: ${failedCount}`
     });
 
   } catch (err) {
@@ -101,5 +101,5 @@ app.post('/send', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server active on http://localhost:${PORT}`);
+  console.log(`🚀 Fast Mailer active on http://localhost:${PORT}`);
 });
