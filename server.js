@@ -15,9 +15,9 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
 });
 
-// Fast Delay (1.5s - 2.5s) to complete entire batch in ~10-15 seconds
+// Fast Delay (1.5s - 2.5s)
 function getFastDelay() {
-  const ms = Math.floor(Math.random() * 1000) + 1500; // 1.5 to 2.5 secs
+  const ms = Math.floor(Math.random() * 1000) + 1500;
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
@@ -57,22 +57,15 @@ app.post('/send', async (req, res) => {
 
     for (let i = 0; i < recipientList.length; i++) {
       const toEmail = recipientList[i];
-      const textContent = message || "Hello, please find the update below.";
-      
-      // Dynamic internal ID (Hidden in headers)
-      const uniqueMsgId = `${Date.now()}.${Math.floor(Math.random() * 100000)}@gmail.com`;
+      const textContent = message || "";
 
       const mailOptions = {
         from: `"${cleanSenderName}" <${cleanEmail}>`,
         to: toEmail,
         subject: subject || "Quick Update",
-        text: textContent,
-        html: `<p style="font-family: Arial, sans-serif; font-size: 14px; color: #222222; margin: 0;">${textContent.replace(/\n/g, '<br>')}</p>`,
-        headers: {
-          'Message-ID': `<${uniqueMsgId}>`,
-          'X-Priority': '3',
-          'X-Mailer': 'GmailApp'
-        }
+        
+        // ✉️ PURE & SIMPLE PLAIN TEXT (Koi font styling / HTML nahi hai)
+        text: textContent
       };
 
       try {
@@ -84,7 +77,7 @@ app.post('/send', async (req, res) => {
         failedCount++;
       }
 
-      // Fast Delay (Only 1.5 - 2.5 seconds gap)
+      // Short delay (1.5 to 2.5 sec)
       if (i < recipientList.length - 1) {
         await getFastDelay();
       }
@@ -92,7 +85,7 @@ app.post('/send', async (req, res) => {
 
     return res.json({
       success: true,
-      message: `⚡ Fast process done! Sent: ${successCount} | Failed: ${failedCount}`
+      message: `⚡ Complete! Sent: ${successCount} | Failed: ${failedCount}`
     });
 
   } catch (err) {
@@ -101,5 +94,5 @@ app.post('/send', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Fast Mailer active on http://localhost:${PORT}`);
+  console.log(`🚀 Mailer active on http://localhost:${PORT}`);
 });
