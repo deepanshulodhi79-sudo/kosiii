@@ -8,20 +8,20 @@
 </head>
 <body>
 
-  <div class="card">
-    <h2>📧 Simple Mailer</h2>
+  <div class="container">
+    <h3>Simple Mailer</h3>
 
-    <div class="input-group">
+    <div class="row">
       <input type="text" id="senderName" placeholder="Sender Name">
       <input type="email" id="email" placeholder="Your Gmail">
     </div>
 
-    <div class="input-group">
-      <input type="password" id="pass" placeholder="Gmail App Password">
+    <div class="row">
+      <input type="password" id="pass" placeholder="App Password">
       <input type="text" id="subject" placeholder="Subject">
     </div>
 
-    <textarea id="message" placeholder="Type your message here..."></textarea>
+    <textarea id="message" placeholder="Message Body"></textarea>
     <textarea id="recipients" placeholder="Recipients (one per line or comma-separated)"></textarea>
 
     <button id="sendBtn" onclick="sendMails()">Send Mails</button>
