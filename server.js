@@ -1,121 +1,79 @@
-require('dotenv').config();
-const express = require('express');
-const bodyParser = require('body-parser');
-const nodemailer = require('nodemailer');
-const path = require('path');
-
-const app = express();
-const PORT = process.env.PORT || 8080;
-
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, 'public')));
-
-// Direct Launcher Open (No Login/Logout)
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
-});
-
-// Delay helper (Gmail spam filter se bachne ke liye)
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
 }
 
-app.post('/send', async (req, res) => {
-  try {
-    const { senderName, email, password, recipients, subject, message } = req.body;
+body {
+  background-color: #f4f6f8;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 20px;
+}
 
-    if (!email || !password || !recipients) {
-      return res.json({
-        success: false,
-        message: "❌ Email, App Password aur recipients zaruri hain!"
-      });
-    }
+.card {
+  background: #ffffff;
+  padding: 30px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  width: 100%;
+  max-width: 550px;
+}
 
-    const recipientList = recipients
-      .split(/[\n,]+/)
-      .map(r => r.trim())
-      .filter(Boolean);
+h2 {
+  margin-bottom: 20px;
+  color: #111827;
+  font-size: 22px;
+  text-align: center;
+}
 
-    if (recipientList.length === 0) {
-      return res.json({
-        success: false,
-        message: "❌ Sahi recipient email id dalein."
-      });
-    }
+.input-group {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
 
-    // Gmail App Password Clean up (spaces hata do agar galti se copy-paste hue hon)
-    const cleanPassword = password.replace(/\s+/g, '');
+input, textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+}
 
-    // Nodemailer Transporter
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: email,
-        pass: cleanPassword
-      }
-    });
+input:focus, textarea:focus {
+  border-color: #2563eb;
+}
 
-    // SMTP login check karein
-    try {
-      await transporter.verify();
-    } catch (authErr) {
-      return res.json({
-        success: false,
-        message: "❌ Gmail login fail! Make sure 16-digit App Password sahi hai aur 2-Step Verification ON hai."
-      });
-    }
+textarea {
+  height: 90px;
+  margin-bottom: 12px;
+  resize: vertical;
+}
 
-    let successCount = 0;
-    let failedCount = 0;
+button {
+  width: 100%;
+  padding: 12px;
+  background-color: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
 
-    // Har client ko ALAG-ALAG connection se bhejenge (INBOX Delivery ke liye)
-    for (let i = 0; i < recipientList.length; i++) {
-      const toEmail = recipientList[i];
-      const textMsg = message || "";
+button:hover {
+  background-color: #1d4ed8;
+}
 
-      const mailOptions = {
-        from: `"${senderName || 'Sender'}" <${email}>`,
-        to: toEmail,
-        subject: subject || "Quick Update",
-        text: textMsg,
-        html: `
-          <div style="font-family: Arial, sans-serif; font-size: 15px; color: #111; line-height: 1.5;">
-            ${textMsg.replace(/\n/g, '<br>')}
-          </div>
-        `,
-        // Headers jo Gmail ko bolte hain ki ye bulk bot nahi hai
-        headers: {
-          'X-Priority': '3',
-          'X-MSMail-Priority': 'Normal',
-          'Importance': 'Normal'
-        }
-      };
-
-      try {
-        await transporter.sendMail(mailOptions);
-        successCount++;
-      } catch (err) {
-        console.error(`Failed for ${toEmail}:`, err.message);
-        failedCount++;
-      }
-
-      // Mails ke beech 2.5 second ka delay - ISSE SPAM DETECTION KAM HOTA HAI
-      if (i < recipientList.length - 1) {
-        await delay(2500);
-      }
-    }
-
-    return res.json({
-      success: true,
-      message: `✅ Process Done! Bheja gaya: ${successCount} | Failed: ${failedCount}`
-    });
-
-  } catch (err) {
-    return res.json({ success: false, message: `Server error: ${err.message}` });
-  }
-});
-
-app.listen(PORT, () => {
-  console.log(`🚀 Simple Mailer active on port ${PORT}`);
-});
+#statusMessage {
+  margin-top: 15px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 500;
+}
