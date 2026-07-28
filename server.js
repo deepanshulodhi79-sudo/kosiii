@@ -15,7 +15,9 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
 });
 
-function shortDelay(ms) {
+// Random delay between min and max seconds (Smart Human Behavior)
+function getRandomDelay(minSec = 4, maxSec = 7) {
+  const ms = Math.floor(Math.random() * (maxSec - minSec + 1) + minSec) * 1000;
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
@@ -24,7 +26,7 @@ app.post('/send', async (req, res) => {
     const { senderName, email, password, recipients, subject, message } = req.body;
 
     if (!email || !password || !recipients) {
-      return res.json({ success: false, message: "❌ Email, App Password aur Recipients zaroori hain!" });
+      return res.json({ success: false, message: "❌ Sabhi fields bharna zaroori hai!" });
     }
 
     const recipientList = recipients
@@ -33,62 +35,64 @@ app.post('/send', async (req, res) => {
       .filter(Boolean);
 
     if (recipientList.length === 0) {
-      return res.json({ success: false, message: "❌ Valid recipients ki list daalein." });
+      return res.json({ success: false, message: "❌ Recipient email list khali hai." });
     }
 
     const cleanEmail = email.trim();
     const cleanPassword = password.replace(/\s+/g, '');
+    const cleanSenderName = senderName ? senderName.trim() : 'Sender';
 
-    // Fast Transporter Setup
+    let successCount = 0;
+    let failedCount = 0;
+
+    // Single Auth Transporter
     const transporter = nodemailer.createTransport({
       host: 'smtp.gmail.com',
       port: 465,
       secure: true,
-      pool: true,
-      maxConnections: 5,
       auth: {
         user: cleanEmail,
         pass: cleanPassword
       }
     });
 
-    // Fast Send Process
-    const sendPromises = recipientList.map(async (toEmail, index) => {
-      // Short stagger delay (~0.5s per email)
-      await shortDelay(index * 500);
+    for (let i = 0; i < recipientList.length; i++) {
+      const toEmail = recipientList[i];
+      const textContent = message || "Hello, please check the details.";
 
-      // Unique identifier background headers ke liye
-      const hiddenToken = Math.random().toString(36).substring(2, 9);
+      // Dynamic unique ID ONLY in background headers (Mail body clean rahegi)
+      const threadId = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
       const mailOptions = {
-        from: `"${senderName || 'Sender'}" <${cleanEmail}>`,
+        from: `"${cleanSenderName}" <${cleanEmail}>`,
         to: toEmail,
         subject: subject || "Quick Update",
-        
-        // ✉️ PURE & CLEAN MESSAGE (Koyi extra text/Ref ID nahi aayega)
-        text: message || "",
-        
-        // Anti-spam identifier hidden headers me bhej rahe hain
+        text: textContent,
+        html: `<div style="font-family: sans-serif; font-size: 14px; line-height: 1.5; color: #111;">${textContent.replace(/\n/g, '<br>')}</div>`,
         headers: {
-          'X-Priority': '3',
-          'X-Mailer': 'Apple Mail (2.3654.120)',
-          'Message-ID': `<msg-${Date.now()}-${hiddenToken}@gmail.com>`
+          'X-Entity-Ref-ID': threadId,
+          'Message-ID': `<msg-${threadId}@gmail.com>`
         }
       };
 
-      return transporter.sendMail(mailOptions);
-    });
+      try {
+        await transporter.sendMail(mailOptions);
+        successCount++;
+        console.log(`[${i + 1}/${recipientList.length}] Sent to ${toEmail}`);
+      } catch (err) {
+        console.error(`Failed for ${toEmail}:`, err.message);
+        failedCount++;
+      }
 
-    const results = await Promise.allSettled(sendPromises);
-
-    const successCount = results.filter(r => r.status === 'fulfilled').length;
-    const failedCount = results.filter(r => r.status === 'rejected').length;
-
-    transporter.close();
+      // Agli mail bhejne se pehle 4 se 7 second ka gap
+      if (i < recipientList.length - 1) {
+        await getRandomDelay(4, 7);
+      }
+    }
 
     return res.json({
       success: true,
-      message: `⚡ Done! Sent: ${successCount} | Failed: ${failedCount}`
+      message: `✅ Mails processed! Sent: ${successCount} | Failed: ${failedCount}`
     });
 
   } catch (err) {
@@ -97,5 +101,5 @@ app.post('/send', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Fast Mailer running on http://localhost:${PORT}`);
+  console.log(`🚀 Server active on http://localhost:${PORT}`);
 });
