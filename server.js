@@ -1,7 +1,5 @@
-// server.js
 require('dotenv').config();
 const express = require('express');
-const session = require('express-session');
 const bodyParser = require('body-parser');
 const nodemailer = require('nodemailer');
 const path = require('path');
@@ -9,107 +7,25 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// 🔑 Hardcoded login
-const HARD_USERNAME = "NNNNNNNNNNNNNNN";
-const HARD_PASSWORD = "NNNNNNNNNNNNNNN";
-
 // ================= GLOBAL STATE =================
-
 // Per-sender hourly mail limit
 let mailLimits = {};
-
-// Global launcher lock
-let launcherLocked = false;
-
-// Session store
-const sessionStore = new session.MemoryStore();
 
 // ================= MIDDLEWARE =================
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Session (1 hour life)
-app.use(session({
-  secret: 'bulk-mailer-secret',
-  resave: false,
-  saveUninitialized: true,
-  store: sessionStore,
-  cookie: {
-    maxAge: 60 * 60 * 1000 // 1 hour
-  }
-}));
-
-// ================= FULL RESET =================
-
-function fullServerReset() {
-  console.log("🔁 FULL LAUNCHER RESET");
-
-  launcherLocked = true;
-  mailLimits = {};
-
-  sessionStore.clear(() => {
-    console.log("🧹 All sessions cleared");
-  });
-
-  setTimeout(() => {
-    launcherLocked = false;
-    console.log("✅ Launcher unlocked for fresh login");
-  }, 2000);
-}
-
-// ================= AUTH =================
-
-function requireAuth(req, res, next) {
-  if (launcherLocked) return res.redirect('/');
-  if (req.session.user) return next();
-  return res.redirect('/');
-}
-
 // ================= ROUTES =================
 
-// Login page
+// Root route - Ab direct launcher.html khulega (No Login)
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'login.html'));
-});
-
-// Login
-app.post('/login', (req, res) => {
-  const { username, password } = req.body;
-
-  if (launcherLocked) {
-    return res.json({
-      success: false,
-      message: "⛔ Launcher reset ho raha hai, thodi der baad login karo"
-    });
-  }
-
-  if (username === HARD_USERNAME && password === HARD_PASSWORD) {
-    req.session.user = username;
-
-    // ⏱️ Full reset after 1 hour
-    setTimeout(fullServerReset, 60 * 60 * 1000);
-
-    return res.json({ success: true });
-  }
-
-  return res.json({ success: false, message: "❌ Invalid credentials" });
-});
-
-// Launcher page
-app.get('/launcher', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
 });
 
-// ================= LOGOUT =================
-app.post('/logout', (req, res) => {
-  req.session.destroy(() => {
-    res.clearCookie('connect.sid');
-    return res.json({
-      success: true,
-      message: "✅ Logged out successfully"
-    });
-  });
+// Backward compatibility (agar purana path hit ho)
+app.get('/launcher', (req, res) => {
+  res.redirect('/');
 });
 
 // ================= HELPERS =================
@@ -118,31 +34,36 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function sendBatch(transporter, mails, batchSize = 5) {
+// Speed Control: 3 mails at a time with 1 sec delay for inbox deliverability
+async function sendBatch(transporter, mails, batchSize = 3) {
+  let results = [];
   for (let i = 0; i < mails.length; i += batchSize) {
-    await Promise.allSettled(
-      mails.slice(i, i + batchSize).map(m => transporter.sendMail(m))
+    const chunk = mails.slice(i, i + batchSize);
+    const batchResults = await Promise.allSettled(
+      chunk.map(m => transporter.sendMail(m))
     );
-    await delay(300);
+    results.push(...batchResults);
+    await delay(1000); // 1 sec delay batch ke beech
   }
+  return results;
 }
 
 // ================= SEND MAIL =================
 
-app.post('/send', requireAuth, async (req, res) => {
+app.post('/send', async (req, res) => {
   try {
     const { senderName, email, password, recipients, subject, message } = req.body;
 
     if (!email || !password || !recipients) {
       return res.json({
         success: false,
-        message: "Email, password and recipients required"
+        message: "❌ Email, App Password aur recipients zaruri hain!"
       });
     }
 
     const now = Date.now();
 
-    // ⏱️ Hourly sender reset
+    // ⏱️ Hourly sender limit reset
     if (!mailLimits[email] || now - mailLimits[email].startTime > 60 * 60 * 1000) {
       mailLimits[email] = { count: 0, startTime: now };
     }
@@ -152,41 +73,81 @@ app.post('/send', requireAuth, async (req, res) => {
       .map(r => r.trim())
       .filter(Boolean);
 
-    if (mailLimits[email].count + recipientList.length > 27) {
+    if (recipientList.length === 0) {
       return res.json({
         success: false,
-        message: `❌ Max 27 mails/hour | Remaining: ${27 - mailLimits[email].count}`
+        message: "❌ Valid recipients ki list daalein."
       });
     }
 
+    if (mailLimits[email].count + recipientList.length > 27) {
+      return res.json({
+        success: false,
+        message: `❌ Max limit 27 mails/hour hai. Baaki bacha limit: ${27 - mailLimits[email].count}`
+      });
+    }
+
+    // 📧 Gmail SMTP Transporter
     const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      auth: { user: email, pass: password }
+      service: 'gmail',
+      auth: {
+        user: email,
+        pass: password // Must be a 16-character App Password
+      }
     });
 
-    const mails = recipientList.map(r => ({
-      from: `"${senderName || 'Anonymous'}" <${email}>`,
-      to: r,
+    // Verify SMTP connection before attempting send
+    try {
+      await transporter.verify();
+    } catch (verifyErr) {
+      return res.json({
+        success: false,
+        message: `❌ Gmail Login Failed: ${verifyErr.message}. Make sure 2FA is ON and you are using a Gmail App Password!`
+      });
+    }
 
-      // ✅ Re removed + inbox friendly subject
-      subject: subject || "Quick Note",
+    // Inbox Friendly Email Format
+    const mails = recipientList.map(r => {
+      const textContent = message || "";
+      return {
+        from: `"${senderName || 'Sender'}" <${email}>`,
+        to: r,
+        subject: subject || "Quick Note",
+        text: textContent,
+        // Added HTML version so mail servers don't mark it as spam text
+        html: `<div style="font-family: Arial, sans-serif; font-size: 14px; color: #222; line-height: 1.6;">
+                ${textContent.replace(/\n/g, '<br>')}
+               </div>`,
+        headers: {
+          'X-Priority': '3',
+          'X-Mailer': 'Nodemailer'
+        }
+      };
+    });
 
-      text: (message || "")
-    }));
+    // Send Mails in Controlled Batches
+    const results = await sendBatch(transporter, mails, 3);
 
-    await sendBatch(transporter, mails, 5);
+    const successfulCount = results.filter(r => r.status === 'fulfilled').length;
+    const failedCount = results.filter(r => r.status === 'rejected').length;
 
-    mailLimits[email].count += recipientList.length;
+    mailLimits[email].count += successfulCount;
+
+    if (successfulCount === 0) {
+      const firstError = results.find(r => r.status === 'rejected')?.reason?.message || "Unknown error";
+      return res.json({
+        success: false,
+        message: `❌ Failed to send mails. Reason: ${firstError}`
+      });
+    }
 
     return res.json({
       success: true,
-      message: `✅ Sent ${recipientList.length} | Used ${mailLimits[email].count}/27`
+      message: `✅ ${successfulCount} mail(s) inbox me bhej diye gaye! (Failed: ${failedCount}) | Limit: ${mailLimits[email].count}/27`
     });
 
   } catch (err) {
-    return res.json({ success: false, message: err.message });
+    return res.json({ success: false, message: `Server error: ${err.message}` });
   }
 });
 
