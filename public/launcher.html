@@ -1,37 +1,33 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Fast Mail Launcher</title>
-<link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simple Mail Launcher</title>
+  <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
-<div class="form-grid">
-  <h2>📧 Simple Mail Launcher</h2>
 
-  <div class="grid-row">
-    <input id="senderName" placeholder="Sender Name (e.g. Rahul)">
-    <input id="email" placeholder="Your Gmail Address">
-  </div>
+  <div class="card">
+    <h2>📧 Simple Mailer</h2>
 
-  <div class="grid-row">
-    <input id="pass" type="password" placeholder="16-Digit App Password">
-    <input id="subject" placeholder="Subject Line">
-  </div>
+    <div class="input-group">
+      <input type="text" id="senderName" placeholder="Sender Name">
+      <input type="email" id="email" placeholder="Your Gmail">
+    </div>
 
-  <div class="grid-row">
-    <textarea id="message" placeholder="Message Body"></textarea>
+    <div class="input-group">
+      <input type="password" id="pass" placeholder="Gmail App Password">
+      <input type="text" id="subject" placeholder="Subject">
+    </div>
+
+    <textarea id="message" placeholder="Type your message here..."></textarea>
     <textarea id="recipients" placeholder="Recipients (one per line or comma-separated)"></textarea>
+
+    <button id="sendBtn" onclick="sendMails()">Send Mails</button>
+    <p id="statusMessage"></p>
   </div>
 
-  <div class="grid-row">
-    <button id="sendBtn">Send All Mails</button>
-  </div>
-
-  <p id="statusMessage"></p>
-</div>
-
-<script src="script.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>
