@@ -7,48 +7,35 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// ================= GLOBAL STATE =================
-// Per-sender hourly mail limit
 let mailLimits = {};
 
-// ================= MIDDLEWARE =================
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ================= ROUTES =================
-
-// Root route - Ab direct launcher.html khulega (No Login)
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
 });
-
-// Backward compatibility (agar purana path hit ho)
-app.get('/launcher', (req, res) => {
-  res.redirect('/');
-});
-
-// ================= HELPERS =================
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Speed Control: 3 mails at a time with 1 sec delay for inbox deliverability
-async function sendBatch(transporter, mails, batchSize = 3) {
+// Mails ko slow rate par bhejna spam filters ko bypass karta hai
+async function sendBatch(transporter, mails) {
   let results = [];
-  for (let i = 0; i < mails.length; i += batchSize) {
-    const chunk = mails.slice(i, i + batchSize);
-    const batchResults = await Promise.allSettled(
-      chunk.map(m => transporter.sendMail(m))
-    );
-    results.push(...batchResults);
-    await delay(1000); // 1 sec delay batch ke beech
+  for (let i = 0; i < mails.length; i++) {
+    try {
+      const info = await transporter.sendMail(mails[i]);
+      results.push({ status: 'fulfilled', value: info });
+    } catch (err) {
+      results.push({ status: 'rejected', reason: err });
+    }
+    // Har mail ke beech 2 second ka gap (Anti-Spam Delay)
+    if (i < mails.length - 1) await delay(2000);
   }
   return results;
 }
-
-// ================= SEND MAIL =================
 
 app.post('/send', async (req, res) => {
   try {
@@ -62,8 +49,6 @@ app.post('/send', async (req, res) => {
     }
 
     const now = Date.now();
-
-    // ⏱️ Hourly sender limit reset
     if (!mailLimits[email] || now - mailLimits[email].startTime > 60 * 60 * 1000) {
       mailLimits[email] = { count: 0, startTime: now };
     }
@@ -74,76 +59,60 @@ app.post('/send', async (req, res) => {
       .filter(Boolean);
 
     if (recipientList.length === 0) {
-      return res.json({
-        success: false,
-        message: "❌ Valid recipients ki list daalein."
-      });
+      return res.json({ success: false, message: "❌ Valid recipient emails dalein." });
     }
 
     if (mailLimits[email].count + recipientList.length > 27) {
       return res.json({
         success: false,
-        message: `❌ Max limit 27 mails/hour hai. Baaki bacha limit: ${27 - mailLimits[email].count}`
+        message: `❌ Per hour limit 27 hai. Remaining limit: ${27 - mailLimits[email].count}`
       });
     }
 
-    // 📧 Gmail SMTP Transporter
+    // Direct Gmail SMTP Transporter
     const transporter = nodemailer.createTransport({
-      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
       auth: {
         user: email,
-        pass: password // Must be a 16-character App Password
+        pass: password.replace(/\s+/g, '') // App password ke spaces hata do
       }
     });
 
-    // Verify SMTP connection before attempting send
-    try {
-      await transporter.verify();
-    } catch (verifyErr) {
-      return res.json({
-        success: false,
-        message: `❌ Gmail Login Failed: ${verifyErr.message}. Make sure 2FA is ON and you are using a Gmail App Password!`
-      });
-    }
+    const cleanSenderName = senderName ? senderName.replace(/"/g, '') : 'Support';
+    
+    // Anti-Spam Message Formatting
+    const mails = recipientList.map((r, index) => {
+      const textBody = message || "Hello, please find the update requested.";
+      const uniqueId = Date.now() + "_" + index;
 
-    // Inbox Friendly Email Format
-    const mails = recipientList.map(r => {
-      const textContent = message || "";
       return {
-        from: `"${senderName || 'Sender'}" <${email}>`,
+        from: `"${cleanSenderName}" <${email}>`,
         to: r,
-        subject: subject || "Quick Note",
-        text: textContent,
-        // Added HTML version so mail servers don't mark it as spam text
-        html: `<div style="font-family: Arial, sans-serif; font-size: 14px; color: #222; line-height: 1.6;">
-                ${textContent.replace(/\n/g, '<br>')}
-               </div>`,
+        subject: subject || "Important Update",
+        text: textBody,
+        html: `
+          <div style="font-family: Arial, sans-serif; font-size: 15px; color: #333; line-height: 1.6;">
+            <p>${textBody.replace(/\n/g, '<br>')}</p>
+          </div>
+        `,
         headers: {
-          'X-Priority': '3',
-          'X-Mailer': 'Nodemailer'
+          'X-Mailer': 'Microsoft Outlook 16.0',
+          'X-Priority': '3 (Normal)',
+          'Message-ID': `<${uniqueId}@gmail.com>`
         }
       };
     });
 
-    // Send Mails in Controlled Batches
-    const results = await sendBatch(transporter, mails, 3);
+    const results = await sendBatch(transporter, mails);
 
     const successfulCount = results.filter(r => r.status === 'fulfilled').length;
-    const failedCount = results.filter(r => r.status === 'rejected').length;
-
     mailLimits[email].count += successfulCount;
-
-    if (successfulCount === 0) {
-      const firstError = results.find(r => r.status === 'rejected')?.reason?.message || "Unknown error";
-      return res.json({
-        success: false,
-        message: `❌ Failed to send mails. Reason: ${firstError}`
-      });
-    }
 
     return res.json({
       success: true,
-      message: `✅ ${successfulCount} mail(s) inbox me bhej diye gaye! (Failed: ${failedCount}) | Limit: ${mailLimits[email].count}/27`
+      message: `✅ Mails sent successfully: ${successfulCount}/${recipientList.length}`
     });
 
   } catch (err) {
@@ -151,7 +120,6 @@ app.post('/send', async (req, res) => {
   }
 });
 
-// ================= START =================
 app.listen(PORT, () => {
-  console.log(`🚀 Mail Launcher running on port ${PORT}`);
+  console.log(`🚀 Mail Launcher active on port ${PORT}`);
 });
