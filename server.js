@@ -1,79 +1,62 @@
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-}
+require('dotenv').config();
+const express = require('express');
+const bodyParser = require('body-parser');
+const nodemailer = require('nodemailer');
+const path = require('path');
 
-body {
-  background-color: #f4f6f8;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
-  padding: 20px;
-}
+const app = express();
+const PORT = process.env.PORT || 8080;
 
-.card {
-  background: #ffffff;
-  padding: 30px;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-  width: 100%;
-  max-width: 550px;
-}
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json());
+app.use(express.static(path.join(__dirname, 'public')));
 
-h2 {
-  margin-bottom: 20px;
-  color: #111827;
-  font-size: 22px;
-  text-align: center;
-}
+// Direct Open (No Login)
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
+});
 
-.input-group {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 12px;
-}
+app.post('/send', async (req, res) => {
+  try {
+    const { senderName, email, password, recipients, subject, message } = req.body;
 
-input, textarea {
-  width: 100%;
-  padding: 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 14px;
-  outline: none;
-}
+    const recipientList = recipients
+      .split(/[\n,]+/)
+      .map(r => r.trim())
+      .filter(Boolean);
 
-input:focus, textarea:focus {
-  border-color: #2563eb;
-}
+    // Simple Direct Nodemailer Setup
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: email,
+        pass: password.replace(/\s+/g, '')
+      }
+    });
 
-textarea {
-  height: 90px;
-  margin-bottom: 12px;
-  resize: vertical;
-}
+    let successCount = 0;
 
-button {
-  width: 100%;
-  padding: 12px;
-  background-color: #2563eb;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-}
+    for (const toEmail of recipientList) {
+      await transporter.sendMail({
+        from: `"${senderName || 'Sender'}" <${email}>`,
+        to: toEmail,
+        subject: subject || "Quick Update",
+        text: message || "",
+        html: `<p>${(message || "").replace(/\n/g, '<br>')}</p>`
+      });
+      successCount++;
+    }
 
-button:hover {
-  background-color: #1d4ed8;
-}
+    return res.json({
+      success: true,
+      message: `✅ Done! Sent ${successCount} mail(s).`
+    });
 
-#statusMessage {
-  margin-top: 15px;
-  text-align: center;
-  font-size: 14px;
-  font-weight: 500;
-}
+  } catch (err) {
+    return res.json({ success: false, message: `❌ Error: ${err.message}` });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`🚀 Mailer running on http://localhost:${PORT}`);
+});
