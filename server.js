@@ -52,25 +52,14 @@ app.post('/send', async (req, res) => {
         from: `"${senderName || 'Sender'}" <${email.trim()}>`,
         to: toEmail,
         subject: subject || "Quick Update",
-        text: textMessage,
         
-        // 📧 Clean, Simple & Normal Email Font (Standard Email Format)
-        html: `
-          <div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #000000; line-height: 1.5;">
-            ${textMessage.replace(/\n/g, '<br>')}
-          </div>
-        `,
-        headers: {
-          'X-Priority': '3',
-          'X-MSMail-Priority': 'Normal',
-          'X-Mailer': 'Nodemailer'
-        }
+        // ✉️ SIRF PLAIN TEXT (Koi HTML nahi - Ekdum normal regular email font)
+        text: textMessage
       };
 
       await transporter.sendMail(mailOptions);
       successCount++;
 
-      // Delay between emails to avoid spam filters
       if (i < recipientList.length - 1) {
         await delay(1500);
       }
