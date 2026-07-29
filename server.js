@@ -15,6 +15,11 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
 });
 
+// Fixed 3-second delay to balance speed and anti-spam limits
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 app.post('/send', async (req, res) => {
   try {
     const { senderName, email, password, recipients, subject, message } = req.body;
@@ -31,7 +36,6 @@ app.post('/send', async (req, res) => {
     const cleanEmail = email.trim();
     const cleanPassword = password.replace(/\s+/g, '');
 
-    // Standard Gmail Transporter
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -42,28 +46,40 @@ app.post('/send', async (req, res) => {
 
     let successCount = 0;
 
-    for (const toEmail of recipientList) {
+    for (let i = 0; i < recipientList.length; i++) {
+      const toEmail = recipientList[i];
+
       const mailOptions = {
         from: senderName ? `"${senderName}" <${cleanEmail}>` : cleanEmail,
         to: toEmail,
-        subject: subject || "Notification Update",
-        text: message || "Hello, this is a standard notification message."
+        subject: subject || "Important Information Notice",
+        text: message || "Hello, please review the attached details for your records."
       };
 
-      await transporter.sendMail(mailOptions);
-      successCount++;
+      try {
+        await transporter.sendMail(mailOptions);
+        successCount++;
+        console.log(`[${i + 1}/${recipientList.length}] Sent to ${toEmail}`);
+      } catch (err) {
+        console.error(`Failed to send to ${toEmail}:`, err.message);
+      }
+
+      // 3-second delay between emails
+      if (i < recipientList.length - 1) {
+        await delay(3000);
+      }
     }
 
     return res.json({
       success: true,
-      message: `✅ Mails sent successfully: ${successCount}`
+      message: `✅ Completed! Sent: ${successCount}/${recipientList.length}`
     });
 
   } catch (err) {
-    return res.json({ success: false, message: `❌ Error: ${err.message}` });
+    return res.json({ success: false, message: `❌ Server Error: ${err.message}` });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server active on port ${PORT}`);
+  console.log(`🚀 Mailer active on port ${PORT}`);
 });
