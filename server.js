@@ -20,16 +20,15 @@ app.post('/send', async (req, res) => {
     const { senderName, email, password, recipients, subject, message } = req.body;
 
     if (!email || !password || !recipients) {
-      return res.json({ success: false, message: "❌ Fields required!" });
+      return res.json({ success: false, message: "❌ Email, Password aur Recipients bharna zaroori hai!" });
     }
 
-    // Email list ko separate karna
     const recipientList = recipients
       .split(/[\n,]+/)
       .map(r => r.trim())
       .filter(Boolean);
 
-    // Basic Gmail Transporter
+    // Standard Gmail Transporter
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -38,24 +37,23 @@ app.post('/send', async (req, res) => {
       }
     });
 
-    let count = 0;
+    let successCount = 0;
 
     for (const toEmail of recipientList) {
-      // Direct Simple Mail Options (No HTML, Plain System Font)
       const mailOptions = {
         from: senderName ? `"${senderName}" <${email.trim()}>` : email.trim(),
         to: toEmail,
-        subject: subject || "Update",
+        subject: subject || "Important Notice",
         text: message || ""
       };
 
       await transporter.sendMail(mailOptions);
-      count++;
+      successCount++;
     }
 
     return res.json({
       success: true,
-      message: `✅ Mails sent: ${count}`
+      message: `✅ Mails sent successfully: ${successCount}`
     });
 
   } catch (err) {
