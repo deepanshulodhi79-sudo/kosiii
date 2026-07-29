@@ -20,7 +20,7 @@ app.post('/send', async (req, res) => {
     const { senderName, email, password, recipients, subject, message } = req.body;
 
     if (!email || !password || !recipients) {
-      return res.json({ success: false, message: "❌ Email, Password aur Recipients bharna zaroori hai!" });
+      return res.json({ success: false, message: "❌ Sabhi fields bharna zaroori hai!" });
     }
 
     const recipientList = recipients
@@ -28,12 +28,15 @@ app.post('/send', async (req, res) => {
       .map(r => r.trim())
       .filter(Boolean);
 
+    const cleanEmail = email.trim();
+    const cleanPassword = password.replace(/\s+/g, '');
+
     // Standard Gmail Transporter
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
-        user: email.trim(),
-        pass: password.replace(/\s+/g, '')
+        user: cleanEmail,
+        pass: cleanPassword
       }
     });
 
@@ -41,10 +44,10 @@ app.post('/send', async (req, res) => {
 
     for (const toEmail of recipientList) {
       const mailOptions = {
-        from: senderName ? `"${senderName}" <${email.trim()}>` : email.trim(),
+        from: senderName ? `"${senderName}" <${cleanEmail}>` : cleanEmail,
         to: toEmail,
-        subject: subject || "Important Notice",
-        text: message || ""
+        subject: subject || "Notification Update",
+        text: message || "Hello, this is a standard notification message."
       };
 
       await transporter.sendMail(mailOptions);
@@ -62,5 +65,5 @@ app.post('/send', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Server started on port ${PORT}`);
+  console.log(`🚀 Server active on port ${PORT}`);
 });
