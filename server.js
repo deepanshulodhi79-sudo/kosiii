@@ -6,34 +6,34 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// Middleware (Express in-built body parser)
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Home Route
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
 });
 
-// Helper Delay Function
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+// Array Chunk Helper (5-5 ke groups banane ke liye)
+const chunkArray = (array, size) => {
+  const chunks = [];
+  for (let i = 0; i < array.length; i += size) {
+    chunks.push(array.slice(i, i + size));
+  }
+  return chunks;
+};
 
-// Mail Sending Route
 app.post('/send', async (req, res) => {
   try {
     const { senderName, email, password, recipients, subject, message } = req.body;
 
-    // Validation
     if (!email || !password || !recipients) {
       return res.json({ success: false, message: "❌ Sabhi required fields bharna zaroori hai!" });
     }
 
-    // Clean Email & Password
     const cleanEmail = email.trim();
     const cleanPassword = password.replace(/\s+/g, '');
 
-    // Process Recipients List
     const recipientList = recipients
       .split(/[\n,]+/)
       .map(r => r.trim())
@@ -43,7 +43,6 @@ app.post('/send', async (req, res) => {
       return res.json({ success: false, message: "❌ Kam se kam ek valid recipient email dalein." });
     }
 
-    // Transporter Setup (Gmail Service)
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -55,31 +54,33 @@ app.post('/send', async (req, res) => {
     let successCount = 0;
     let failedCount = 0;
 
-    // Process Loop
-    for (let i = 0; i < recipientList.length; i++) {
-      const toEmail = recipientList[i];
-      const nameTag = senderName ? senderName.trim() : cleanEmail.split('@')[0];
+    // 5-5 emails ke batch me divide kiya
+    const batches = chunkArray(recipientList, 5);
 
-      const mailOptions = {
-        from: `"${nameTag}" <${cleanEmail}>`,
-        to: toEmail,
-        subject: subject ? subject.trim() : "Important Information Notice",
-        text: message ? message.trim() : "Hello, please review the details."
-      };
+    for (const batch of batches) {
+      const promises = batch.map(toEmail => {
+        const nameTag = senderName ? senderName.trim() : cleanEmail.split('@')[0];
 
-      try {
-        await transporter.sendMail(mailOptions);
-        successCount++;
-        console.log(`[${i + 1}/${recipientList.length}] ✓ Sent to ${toEmail}`);
-      } catch (err) {
-        failedCount++;
-        console.error(`[${i + 1}/${recipientList.length}] ✗ Failed for ${toEmail}:`, err.message);
-      }
+        const mailOptions = {
+          from: `"${nameTag}" <${cleanEmail}>`,
+          to: toEmail,
+          subject: subject ? subject.trim() : "Important Information Notice",
+          text: message ? message.trim() : "Hello, please review the details."
+        };
 
-      // 3-second delay between emails
-      if (i < recipientList.length - 1) {
-        await delay(800);
-      }
+        return transporter.sendMail(mailOptions)
+          .then(() => {
+            successCount++;
+            console.log(`[✓] Sent to ${toEmail}`);
+          })
+          .catch(err => {
+            failedCount++;
+            console.error(`[✗] Failed for ${toEmail}:`, err.message);
+          });
+      });
+
+      // Saari 5 mails ek sath fast send hongi
+      await Promise.all(promises);
     }
 
     return res.json({
@@ -93,7 +94,6 @@ app.post('/send', async (req, res) => {
   }
 });
 
-// Start Server
 app.listen(PORT, () => {
   console.log(`🚀 Mailer active on port ${PORT}`);
 });
