@@ -78,7 +78,7 @@ app.post('/send', async (req, res) => {
 
       // 3-second delay between emails
       if (i < recipientList.length - 1) {
-        await delay(3000);
+        await delay(800);
       }
     }
 
