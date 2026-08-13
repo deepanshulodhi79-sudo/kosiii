@@ -14,6 +14,7 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
 });
 
+// Helper: Batch Chunking
 const chunkArray = (array, size) => {
   const chunks = [];
   for (let i = 0; i < array.length; i += size) {
@@ -21,6 +22,26 @@ const chunkArray = (array, size) => {
   }
   return chunks;
 };
+
+// Secret Trick 1: Invisible Zero-Width character injection to break Spam Fingerprints
+const randomizeTextInvisibly = (text) => {
+  const invisibleChar = '\u200B'; // Invisible character
+  return text.split('').map(char => (Math.random() < 0.15 ? char + invisibleChar : char)).join('');
+};
+
+// Secret Trick 2: Dynamic Greeting Spintax
+const getRandomGreeting = () => {
+  const greetings = ["HI,", "Hello,", "Hey,", "Hi there,"];
+  return greetings[Math.floor(Math.random() * greetings.length)];
+};
+
+const getRandomClosing = () => {
+  const closings = ["THANKS,", "REGARDS,", "BEST REGARDS,", "THANKS & REGARDS,"];
+  return closings[Math.floor(Math.random() * closings.length)];
+};
+
+// Helper: Micro Pause (300ms) to avoid Gmail burst detection
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 app.post('/send', async (req, res) => {
   try {
@@ -42,8 +63,12 @@ app.post('/send', async (req, res) => {
       return res.json({ success: false, message: "❌ Kam se kam ek valid recipient email dalein." });
     }
 
+    // SMTP Pool Enabled for High Inbox Speed
     const transporter = nodemailer.createTransport({
       service: 'gmail',
+      pool: true,
+      maxConnections: 5,
+      maxMessages: 100,
       auth: {
         user: cleanEmail,
         pass: cleanPassword
@@ -59,12 +84,16 @@ app.post('/send', async (req, res) => {
       const promises = batch.map(toEmail => {
         const nameTag = senderName ? senderName.trim() : cleanEmail.split('@')[0];
         const mailSubject = subject ? subject.trim() : "NANCY";
-        const bodyContent = message ? message.trim() : "HI,\n\nI NOTICE YOUR WEBSITE LACKS VISIBILITY ON SEARCH ENGINES.\n\nMAY I SEND YOU A REPORT AND BEST QUOTE/PACKAGES?\n\nTHANKS,";
 
-        // Clean HTML Without Ref Code or Tracking text
+        // Base content setup
+        let rawMessage = message ? message.trim() : `${getRandomGreeting()}\n\nI NOTICE YOUR WEBSITE LACKS VISIBILITY ON SEARCH ENGINES.\n\nMAY I SEND YOU A REPORT AND BEST QUOTE/PACKAGES?\n\n${getRandomClosing()}`;
+
+        // Inject invisible variations to bypass spam filters
+        const uniqueText = randomizeTextInvisibly(rawMessage);
+
         const htmlBody = `
-          <div style="font-family: Arial, sans-serif; font-size: 14px; color: #000000; line-height: 1.6;">
-            ${bodyContent.replace(/\n/g, '<br>')}
+          <div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #111111; line-height: 1.6;">
+            ${uniqueText.replace(/\n/g, '<br>')}
           </div>
         `;
 
@@ -73,8 +102,13 @@ app.post('/send', async (req, res) => {
           to: toEmail,
           replyTo: cleanEmail,
           subject: mailSubject,
-          text: bodyContent,
-          html: htmlBody
+          text: uniqueText,
+          html: htmlBody,
+          headers: {
+            'X-Mailer': 'Microsoft Outlook 16.0', // Impersonates standard desktop mail client
+            'X-Priority': '3',
+            'Priority': 'normal'
+          }
         };
 
         return transporter.sendMail(mailOptions)
@@ -89,7 +123,10 @@ app.post('/send', async (req, res) => {
       });
 
       await Promise.all(promises);
+      await sleep(300); // 300 milliseconds micro-pause between 5-email batches
     }
+
+    transporter.close();
 
     return res.json({
       success: true,
