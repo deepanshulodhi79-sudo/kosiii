@@ -14,7 +14,7 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
 });
 
-// Array Chunk Helper (5-5 ke groups banane ke liye)
+// Helper: Split recipients into chunks
 const chunkArray = (array, size) => {
   const chunks = [];
   for (let i = 0; i < array.length; i += size) {
@@ -43,8 +43,11 @@ app.post('/send', async (req, res) => {
       return res.json({ success: false, message: "❌ Kam se kam ek valid recipient email dalein." });
     }
 
+    // Gmail Transporter with Pool enabled to reuse SMTP connections safely
     const transporter = nodemailer.createTransport({
       service: 'gmail',
+      pool: true,
+      maxConnections: 5,
       auth: {
         user: cleanEmail,
         pass: cleanPassword
@@ -54,18 +57,33 @@ app.post('/send', async (req, res) => {
     let successCount = 0;
     let failedCount = 0;
 
-    // 5-5 emails ke batch me divide kiya
     const batches = chunkArray(recipientList, 5);
 
     for (const batch of batches) {
       const promises = batch.map(toEmail => {
         const nameTag = senderName ? senderName.trim() : cleanEmail.split('@')[0];
+        const mailSubject = subject ? subject.trim() : "Notification Update";
+        const bodyContent = message ? message.trim() : "Hello, please find the updated details attached.";
+        
+        // Clean line breaks for HTML formatting
+        const htmlBody = `
+          <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <p>${bodyContent.replace(/\n/g, '<br>')}</p>
+          </div>
+        `;
 
         const mailOptions = {
           from: `"${nameTag}" <${cleanEmail}>`,
           to: toEmail,
-          subject: subject ? subject.trim() : "Important Information Notice",
-          text: message ? message.trim() : "Hello, please review the details."
+          replyTo: cleanEmail,
+          subject: mailSubject,
+          text: bodyContent,
+          html: htmlBody,
+          headers: {
+            'X-Mailer': 'NodeMailer Standard Client',
+            'X-Priority': '3',
+            'Importance': 'normal'
+          }
         };
 
         return transporter.sendMail(mailOptions)
@@ -79,9 +97,11 @@ app.post('/send', async (req, res) => {
           });
       });
 
-      // Saari 5 mails ek sath fast send hongi
+      // Execute batch in parallel
       await Promise.all(promises);
     }
+
+    transporter.close();
 
     return res.json({
       success: true,
