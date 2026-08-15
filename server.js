@@ -14,33 +14,7 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'launcher.html'));
 });
 
-// Helper: Batch Chunking
-const chunkArray = (array, size) => {
-  const chunks = [];
-  for (let i = 0; i < array.length; i += size) {
-    chunks.push(array.slice(i, i + size));
-  }
-  return chunks;
-};
-
-// Secret Trick 1: Invisible Zero-Width character injection to break Spam Fingerprints
-const randomizeTextInvisibly = (text) => {
-  const invisibleChar = '\u200B'; // Invisible character
-  return text.split('').map(char => (Math.random() < 0.15 ? char + invisibleChar : char)).join('');
-};
-
-// Secret Trick 2: Dynamic Greeting Spintax
-const getRandomGreeting = () => {
-  const greetings = ["HI,", "Hello,", "Hey,", "Hi there,"];
-  return greetings[Math.floor(Math.random() * greetings.length)];
-};
-
-const getRandomClosing = () => {
-  const closings = ["THANKS,", "REGARDS,", "BEST REGARDS,", "THANKS & REGARDS,"];
-  return closings[Math.floor(Math.random() * closings.length)];
-};
-
-// Helper: Micro Pause (300ms) to avoid Gmail burst detection
+// Safe Delay Helper
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 app.post('/send', async (req, res) => {
@@ -63,12 +37,9 @@ app.post('/send', async (req, res) => {
       return res.json({ success: false, message: "❌ Kam se kam ek valid recipient email dalein." });
     }
 
-    // SMTP Pool Enabled for High Inbox Speed
+    // Clean Transporter Setup
     const transporter = nodemailer.createTransport({
       service: 'gmail',
-      pool: true,
-      maxConnections: 5,
-      maxMessages: 100,
       auth: {
         user: cleanEmail,
         pass: cleanPassword
@@ -78,55 +49,38 @@ app.post('/send', async (req, res) => {
     let successCount = 0;
     let failedCount = 0;
 
-    const batches = chunkArray(recipientList, 5);
+    // Sequential Loop with 2-second Gap
+    for (let i = 0; i < recipientList.length; i++) {
+      const toEmail = recipientList[i];
+      const nameTag = senderName ? senderName.trim() : cleanEmail.split('@')[0];
+      const mailSubject = subject ? subject.trim() : "Website Inquiry";
+      
+      const emailContent = message ? message.trim() : "Hi, hope you are doing well.";
 
-    for (const batch of batches) {
-      const promises = batch.map(toEmail => {
-        const nameTag = senderName ? senderName.trim() : cleanEmail.split('@')[0];
-        const mailSubject = subject ? subject.trim() : "NANCY";
+      const mailOptions = {
+        from: `"${nameTag}" <${cleanEmail}>`,
+        to: toEmail,
+        subject: mailSubject,
+        text: emailContent,
+        html: `<div style="font-family: Arial, sans-serif; font-size: 14px; color: #222222; line-height: 1.6;">
+                ${emailContent.replace(/\n/g, '<br>')}
+              </div>`
+      };
 
-        // Base content setup
-        let rawMessage = message ? message.trim() : `${getRandomGreeting()}\n\nI NOTICE YOUR WEBSITE LACKS VISIBILITY ON SEARCH ENGINES.\n\nMAY I SEND YOU A REPORT AND BEST QUOTE/PACKAGES?\n\n${getRandomClosing()}`;
+      try {
+        await transporter.sendMail(mailOptions);
+        successCount++;
+        console.log(`[✓] Sent to ${toEmail}`);
+      } catch (err) {
+        failedCount++;
+        console.error(`[✗] Failed for ${toEmail}:`, err.message);
+      }
 
-        // Inject invisible variations to bypass spam filters
-        const uniqueText = randomizeTextInvisibly(rawMessage);
-
-        const htmlBody = `
-          <div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #111111; line-height: 1.6;">
-            ${uniqueText.replace(/\n/g, '<br>')}
-          </div>
-        `;
-
-        const mailOptions = {
-          from: `"${nameTag}" <${cleanEmail}>`,
-          to: toEmail,
-          replyTo: cleanEmail,
-          subject: mailSubject,
-          text: uniqueText,
-          html: htmlBody,
-          headers: {
-            'X-Mailer': 'Microsoft Outlook 16.0', // Impersonates standard desktop mail client
-            'X-Priority': '3',
-            'Priority': 'normal'
-          }
-        };
-
-        return transporter.sendMail(mailOptions)
-          .then(() => {
-            successCount++;
-            console.log(`[✓] Sent to ${toEmail}`);
-          })
-          .catch(err => {
-            failedCount++;
-            console.error(`[✗] Failed for ${toEmail}:`, err.message);
-          });
-      });
-
-      await Promise.all(promises);
-      await sleep(300); // 300 milliseconds micro-pause between 5-email batches
+      // 2-second safe pause to avoid burst rate limiting
+      if (i < recipientList.length - 1) {
+        await sleep(2000);
+      }
     }
-
-    transporter.close();
 
     return res.json({
       success: true,
